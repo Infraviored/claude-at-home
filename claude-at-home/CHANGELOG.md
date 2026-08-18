@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- Create an SSH key on first boot and print the public key in the log, so
+  pushing to Git only takes pasting it into your Git host. Previously you
+  had to ask Claude to generate one.
+
 ## 1.0.2
 
 - Keep `~/.ssh` on the persistent volume. OpenSSH reads it from
