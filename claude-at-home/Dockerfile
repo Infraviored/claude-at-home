@@ -33,6 +33,12 @@ RUN mkdir -p "${CLAUDE_SEED_HOME}" \
     && HOME="${CLAUDE_SEED_HOME}" curl -fsSL https://claude.ai/install.sh | HOME="${CLAUDE_SEED_HOME}" bash \
     && test -x "${CLAUDE_SEED_HOME}/.local/bin/claude"
 
+# Home Assistant agent skills (MIT, github.com/homeassistant-ai/skills),
+# vendored as a git submodule and pinned to a commit. Baked into the image
+# rather than into /data, so updating the app updates the skills too.
+COPY vendor/ha-skills/skills /opt/ha-skills/skills
+COPY vendor/ha-skills/LICENSE /opt/ha-skills/LICENSE
+
 # Copy root filesystem
 COPY rootfs /
 

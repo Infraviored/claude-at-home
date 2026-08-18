@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+- Ship the [Home Assistant agent skills][ha-skills], so Claude knows Home
+  Assistant's own conventions - native constructs over templates, helper
+  selection, automation modes, Zigbee button patterns, dashboard
+  configuration, safe refactoring - instead of guessing them. They are
+  updated along with the app, and your own skills are never touched.
+
+[ha-skills]: https://github.com/homeassistant-ai/skills
+
 ## 1.0.3
 
 - Create an SSH key on first boot and print the public key in the log, so

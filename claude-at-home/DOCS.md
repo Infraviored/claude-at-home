@@ -102,6 +102,24 @@ what is eating your disk, clean up unused images.
 
 Leave it on unless you specifically want the Docker features.
 
+## Bundled Home Assistant skills
+
+The app ships the [Home Assistant agent skills][ha-skills] — a knowledge
+pack that teaches Claude Home Assistant's own conventions rather than
+letting it guess: native constructs over templates, which helper to pick,
+automation modes, Zigbee button patterns, YAML-only integration management,
+dashboard configuration and safe refactoring.
+
+Nothing to install or enable. The skills are baked into the image and
+linked into `~/.claude/skills` on every boot, so updating the app updates
+them too. Skills you add yourself are never overwritten — if one of yours
+carries the same name, yours wins and the log says so.
+
+They are MIT licensed and vendored unmodified from
+[homeassistant-ai/skills][ha-skills].
+
+[ha-skills]: https://github.com/homeassistant-ai/skills
+
 ## Pushing to Git over SSH
 
 Your Home Assistant configuration is probably a Git repository, and Claude
@@ -162,6 +180,11 @@ Claude exits for any reason, the session is rebuilt and resumed with
 that same tmux session and serves it over ingress. Because both are
 supervised independently, either can crash and recover without the other
 noticing.
+
+The bundled skills live in the image at `/opt/ha-skills`, and a startup
+task links them into the persistent volume. Linking rather than copying is
+what keeps them current across updates while leaving your own skills
+untouched.
 
 The app's persistent volume holds the CLI, its credentials and its history,
 which is what lets the session survive rebuilds and updates rather than

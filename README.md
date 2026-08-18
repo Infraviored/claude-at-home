@@ -53,6 +53,11 @@ Assistant's internal network and is served through authenticated ingress.
 No SSH daemon, no published port, nothing reachable from your LAN or the
 internet.
 
+**It knows Home Assistant.** The [Home Assistant agent skills][ha-skills]
+are bundled, so Claude writes automations the way Home Assistant wants them
+written — native constructs over templates, the right helper for the job,
+the correct automation mode — instead of plausible-looking YAML.
+
 **It stays out of your way.** No entities, no dashboard edits, no files
 dropped in your config directory. Uninstall it and nothing is left behind
 but what Claude changed on purpose.
@@ -91,11 +96,19 @@ Three options, all optional:
 
 [Details →](claude-at-home/DOCS.md#configuration)
 
+## Credits
+
+Bundles the [Home Assistant agent skills][ha-skills] by
+[homeassistant-ai](https://github.com/homeassistant-ai), vendored unmodified
+under the MIT license.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The bundled skills keep their own MIT
+license, shipped alongside them.
 
 [claude-code]: https://claude.com/claude-code
+[ha-skills]: https://github.com/homeassistant-ai/skills
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [license-shield]: https://img.shields.io/badge/license-MIT-blue.svg
