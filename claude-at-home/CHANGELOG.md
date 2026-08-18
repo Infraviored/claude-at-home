@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- Keep `~/.ssh` on the persistent volume. OpenSSH reads it from
+  `/etc/passwd`, not from `HOME`, so a key created inside the app was lost
+  on the next rebuild.
+
 ## 1.0.1
 
 - Bundle `openssh-client`, so Claude can push to Git over SSH. Generate a

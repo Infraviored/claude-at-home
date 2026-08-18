@@ -37,6 +37,7 @@ RUN mkdir -p "${CLAUDE_SEED_HOME}" \
 COPY rootfs /
 
 RUN chmod +x \
+        /etc/cont-init.d/*.sh \
         /etc/services.d/*/run \
         /etc/services.d/*/finish
 
