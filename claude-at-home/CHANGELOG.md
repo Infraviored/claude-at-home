@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Bundle `openssh-client`, so Claude can push to Git over SSH. Generate a
+  key once inside the app (`ssh-keygen`); it lives in the persistent
+  storage and survives restarts, rebuilds and updates.
+
 ## 1.0.0
 
 First release.

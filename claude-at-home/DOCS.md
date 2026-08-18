@@ -102,6 +102,38 @@ what is eating your disk, clean up unused images.
 
 Leave it on unless you specifically want the Docker features.
 
+## Pushing to Git over SSH
+
+Your Home Assistant configuration is probably a Git repository, and Claude
+can commit to it. To let it *push* over SSH, give it a key. Do this once,
+in the app's terminal:
+
+```
+ssh-keygen -t ed25519 -C "claude-at-home" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub
+```
+
+Add that public key to your Git host — on GitHub either as a deploy key on
+the one repository (Settings, Deploy keys, *Allow write access*), or as an
+account SSH key if Claude should reach several repositories. A deploy key
+is the narrower choice.
+
+Then tell Git who is committing, and take the first connection:
+
+```
+git config --global user.name  "Claude at Home"
+git config --global user.email "claude@localhost"
+ssh -T git@github.com          # answer yes once to trust the host key
+```
+
+The key, the `known_hosts` entry and the Git config all live in the app's
+persistent storage, so this survives restarts, rebuilds and updates. Only
+an uninstall removes them.
+
+Note that the private key sits unencrypted in that storage — anyone with
+Docker access to your Home Assistant host can read it. Scope the key to
+what Claude actually needs to reach.
+
 ## Troubleshooting
 
 **The sidebar entry is missing.** Turn on *Show in sidebar* on the app's

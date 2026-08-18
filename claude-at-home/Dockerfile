@@ -6,6 +6,7 @@ FROM ${BUILD_FROM}
 #   tmux      - holds the persistent Claude session
 #   ttyd      - serves that tmux session as the ingress web terminal
 #   git       - HA configs are usually git-tracked, and Claude works on them
+#   openssh-client - so git can push over SSH (keys live in /data/.ssh)
 #   python3   - HA configs contain Python (pyscript, AppDaemon, helpers)
 #   jq / docker-cli - inspecting the Supervisor API and the Docker layer
 #               (the latter only works with Protection mode off)
@@ -14,6 +15,7 @@ RUN apk add --no-cache \
         tmux \
         ttyd \
         git \
+        openssh-client \
         python3 \
         curl \
         jq \
