@@ -1,0 +1,9 @@
+#!/usr/bin/env bashio
+# ==============================================================================
+# Always let s6 restart the Claude session.
+#
+# Deliberately unlike the upstream apps-example finish script, which halts
+# the whole container on a non-zero exit: here a dead session should always
+# come back, never take the add-on down with it.
+# ==============================================================================
+bashio::log.info "Claude service exited (${1}) — restarting."

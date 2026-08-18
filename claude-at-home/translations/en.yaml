@@ -1,0 +1,19 @@
+configuration:
+  session_name:
+    name: Session name
+    description: >-
+      Name of the tmux session holding Claude, and the name it registers for
+      Remote Control. Change only if it clashes with something else.
+  permission_mode:
+    name: Permission mode
+    description: >-
+      How Claude handles actions that would normally need your approval.
+      "auto" is the default: it works unattended but screens each step for
+      risky actions and prompt injection. "bypass permissions" skips those
+      checks entirely. The remaining modes stop and wait for an answer, so
+      someone has to be watching the terminal for work to continue.
+  remote_control:
+    name: Remote Control
+    description: >-
+      Let this session be driven from the Claude apps and claude.ai, not
+      only from the terminal here.

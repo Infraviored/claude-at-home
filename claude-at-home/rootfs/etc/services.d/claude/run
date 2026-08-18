@@ -1,0 +1,90 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Persistent Claude Code session, held open in a tmux server.
+#
+# This script IS the s6-supervised process: it creates the session if
+# missing, then blocks watching it. If the session dies (claude exited and
+# took its only pane with it), this exits and s6 restarts the whole script,
+# which recreates the session. One supervision layer, no restart loop of
+# our own to keep alive.
+# ==============================================================================
+set -u
+
+readonly SOCK=/data/tmux.sock
+readonly SEED_HOME=/opt/claude-home
+
+SESSION="$(bashio::config 'session_name' 'claude-at-home')"
+[ -n "${SESSION}" ] && [ "${SESSION}" != "null" ] || SESSION="claude-at-home"
+
+# /data is the add-on's persistent volume. Pointing HOME at it directly is
+# what makes credentials, conversation history and claude's own
+# self-updates survive container rebuilds.
+export HOME=/data
+export PATH="/data/.local/bin:${PATH}"
+# claude refuses --dangerously-skip-permissions as root without this.
+export IS_SANDBOX=1
+
+# First run: seed the CLI baked into the image into /data. No download.
+if [ ! -x /data/.local/bin/claude ]; then
+    bashio::log.info "Seeding Claude Code CLI into /data..."
+    mkdir -p /data
+    cp -a "${SEED_HOME}/.local" /data/.local
+fi
+
+if ! tmux -S "${SOCK}" has-session -t "${SESSION}" 2>/dev/null; then
+    CMD="claude"
+
+    # Permission handling. "auto" is the default: it runs unattended but
+    # still screens each tool call for risky actions and prompt injection,
+    # which is what you want for something living in your smart home.
+    MODE="$(bashio::config 'permission_mode' 'auto')"
+    [ -n "${MODE}" ] && [ "${MODE}" != "null" ] || MODE="auto"
+    case "${MODE}" in
+        "auto")               CMD="${CMD} --permission-mode auto" ;;
+        "bypass permissions") CMD="${CMD} --dangerously-skip-permissions" ;;
+        "accept edits")       CMD="${CMD} --permission-mode acceptEdits" ;;
+        "plan")               CMD="${CMD} --permission-mode plan" ;;
+        "manual")             CMD="${CMD} --permission-mode manual" ;;
+        "never ask")          CMD="${CMD} --permission-mode dontAsk" ;;
+        *)
+            bashio::log.warning "Unknown permission_mode '${MODE}' — falling back to auto."
+            CMD="${CMD} --permission-mode auto"
+            ;;
+    esac
+
+    # Remote Control lets you drive this session from the Claude apps.
+    if bashio::config.true 'remote_control'; then
+        CMD="${CMD} --remote-control ${SESSION}"
+    fi
+
+    # `claude --continue` exits non-zero forever when there is no
+    # conversation history at all (fresh install), and there is no
+    # built-in fallback — so only pass it once history actually exists.
+    if [ -d /data/.claude/projects ] \
+        && [ -n "$(ls -A /data/.claude/projects 2>/dev/null)" ]; then
+        CMD="${CMD} --continue"
+    else
+        bashio::log.info "No prior conversation — starting a fresh session."
+    fi
+
+    # Depending on Supervisor version the config map lands on one or the
+    # other of these; whichever exists is where Claude should start.
+    WORKDIR=/data
+    for candidate in /config /homeassistant; do
+        [ -d "${candidate}" ] && WORKDIR="${candidate}" && break
+    done
+
+    bashio::log.info "Starting tmux session '${SESSION}' in ${WORKDIR}..."
+    tmux -S "${SOCK}" new-session -d -s "${SESSION}" -c "${WORKDIR}" "${CMD}"
+fi
+
+# Block while the session lives. Exiting hands control back to s6, which
+# re-runs this script and recreates the session.
+while tmux -S "${SOCK}" has-session -t "${SESSION}" 2>/dev/null; do
+    sleep 5
+done
+
+bashio::log.warning "tmux session '${SESSION}' ended."
+# Brief pause so a hard crash-loop backs off instead of spinning.
+sleep 3
+exit 1

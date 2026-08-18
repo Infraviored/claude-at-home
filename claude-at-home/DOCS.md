@@ -1,0 +1,139 @@
+# Home Assistant App: Claude at Home
+
+Runs [Claude Code][claude-code] as a persistent session inside Home
+Assistant, reachable as a terminal in your dashboard. Claude can read and
+edit your HA configuration, so you can ask it to write automations, explain
+an entity, or clean up YAML — in place, on the running system.
+
+## How to use
+
+1. Install and start the app.
+2. Open **Claude at Home** in the sidebar. If it isn't there, turn on
+   **Show in sidebar** on the app's Info page — Home Assistant resets that
+   switch whenever an app is installed or updated. The **Open Web UI**
+   button on that page always works too.
+3. On first start you'll be dropped into Claude's login flow. It prints a
+   URL — open it in a browser, sign in, and paste the code back into the
+   terminal. That's the only manual step, and only once: credentials live
+   in the app's persistent storage from then on.
+4. Talk to Claude. The session stays alive in the background whether or not
+   the browser tab is open.
+
+## What survives what
+
+Credentials, conversation history and Claude's own self-updates are stored
+in the app's persistent volume, so they survive app restarts, rebuilds and
+Home Assistant reboots. After the first login you should never have to log
+in again.
+
+If the session ever dies, it is restarted automatically and resumed with
+its prior conversation.
+
+## Configuration
+
+```yaml
+session_name: claude-at-home
+permission_mode: auto
+remote_control: true
+```
+
+Changing any of these takes effect when the app restarts.
+
+### Option: `session_name`
+
+Name of the tmux session holding Claude, and the name it registers for
+Remote Control. Change only if it clashes with something else.
+
+### Option: `permission_mode`
+
+How Claude handles actions that would normally need your approval:
+
+- **auto** (default) — works unattended, but screens every tool call for
+  risky actions and prompt injection first. Safe ones run; risky ones are
+  blocked and Claude looks for another way. Best fit for something running
+  in your home unsupervised. Sessions cost slightly more.
+- **bypass permissions** — acts without asking and without those checks.
+  Fastest, and the largest grant of authority: Claude can change and
+  delete things in your configuration with nothing in the way.
+- **accept edits** — auto-accepts file edits, asks about everything else.
+- **plan** — works out what it would do, without making changes.
+- **manual** — asks before anything consequential.
+- **never ask** — never prompts.
+
+*auto* and *bypass permissions* are the two that keep working with nobody
+watching. The others stop and wait for an answer at some point, so someone
+has to be at the terminal for work to continue.
+
+### Option: `remote_control`
+
+Lets you drive this session from the Claude apps and claude.ai instead of
+only from the terminal here. Turn it off to keep the session local to this
+Home Assistant instance.
+
+## Access and permissions
+
+The terminal is bound to Home Assistant's internal interface only and is
+served exclusively through authenticated ingress. It opens no port, runs no
+SSH server, and is not reachable from your LAN or the internet directly.
+
+By default Claude runs here in *auto* mode (see `permission_mode` above):
+it acts on your configuration without stopping to ask, while screening
+each step for risky actions. That is what makes it useful for this job,
+and it is still a real grant of authority — it can change and delete
+things in your Home Assistant config. Keep backups, as you would for
+anything that edits your config.
+
+### Protection mode
+
+The app asks for your Home Assistant configuration, the Home Assistant and
+Supervisor APIs, and the Docker API. It does not ask for host networking,
+hardware, or kernel access.
+
+The Docker API is the one that Protection mode gates, and it is what lets
+Claude act as a maintenance assistant: see which apps are running, find
+what is eating your disk, clean up unused images.
+
+- **Protection mode on** (the default) — Docker access is blocked.
+  Everything else works: Claude reads and edits your configuration, calls
+  Home Assistant services, restarts things through the Supervisor API.
+- **Protection mode off** — Docker access works too. Home Assistant will
+  warn you that this grants full access to the system, and that warning is
+  accurate. Only turn it off if you want the maintenance capabilities.
+
+Leave it on unless you specifically want the Docker features.
+
+## Troubleshooting
+
+**The sidebar entry is missing.** Turn on *Show in sidebar* on the app's
+Info page. Home Assistant resets that switch on every install and update.
+
+**"The app is starting, this can take some time…" never goes away.** Check
+the app's log. The terminal is only served once the Claude session exists;
+if the session is failing to start you will see why there.
+
+**It asks me to log in again.** Credentials live in the app's persistent
+storage, so this should only ever happen once. If it recurs, something is
+wiping that storage — check that you are not reinstalling the app, which
+creates a fresh volume, rather than restarting or updating it.
+
+**I want a clean slate.** Uninstalling the app removes its storage,
+including the login and the whole conversation history.
+
+**Where is my conversation?** Inside the app's own storage, alongside the
+Claude CLI. Nothing is written into your Home Assistant config directory
+except changes Claude makes on purpose.
+
+## Under the hood
+
+The Claude CLI runs inside a tmux session, which is supervised by s6: if
+Claude exits for any reason, the session is rebuilt and resumed with
+`--continue`. A second supervised service runs `ttyd`, which attaches to
+that same tmux session and serves it over ingress. Because both are
+supervised independently, either can crash and recover without the other
+noticing.
+
+The app's persistent volume holds the CLI, its credentials and its history,
+which is what lets the session survive rebuilds and updates rather than
+just restarts.
+
+[claude-code]: https://claude.com/claude-code

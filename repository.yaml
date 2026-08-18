@@ -1,0 +1,4 @@
+# https://developers.home-assistant.io/docs/apps/repository#repository-configuration
+name: Claude at Home
+url: 'https://github.com/Infraviored/claude-at-home'
+maintainer: Infraviored <floschneider11111@gmail.com>

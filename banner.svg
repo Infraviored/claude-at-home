@@ -1,0 +1,10 @@
+<svg width="740" height="320" viewBox="0 0 740 320" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(20,-20)">
+    <path d="M320 301.762C320 310.012 313.25 316.762 305 316.762H95C86.75 316.762 80 310.012 80 301.762V211.762C80 203.512 84.77 191.993 90.61 186.153L189.39 87.3725C195.22 81.5425 204.77 81.5425 210.6 87.3725L309.39 186.162C315.22 191.992 320 203.522 320 211.772V301.772V301.762Z" fill="#FFFFFF" stroke="#18BCF2" stroke-width="26" stroke-linejoin="round"/>
+    <g transform="translate(125,147) scale(6.25)">
+      <path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="#D97757" fill-rule="evenodd"/>
+    </g>
+  </g>
+  <text x="370" y="180" font-family="Helvetica,Arial,sans-serif" font-size="86" font-weight="700" fill="#18BCF2">Claude</text>
+  <text x="370" y="262" font-family="Helvetica,Arial,sans-serif" font-size="86" font-weight="300" fill="#D97757">at Home</text>
+</svg>

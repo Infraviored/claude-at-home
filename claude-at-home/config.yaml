@@ -1,0 +1,35 @@
+# https://developers.home-assistant.io/docs/apps/configuration#app-configuration
+name: Claude at Home
+version: "1.0.0"
+slug: claude-at-home
+description: Persistent Claude Code session with an ingress-only web terminal in your sidebar
+url: "https://github.com/Infraviored/claude-at-home"
+arch:
+  - aarch64
+  - amd64
+init: false
+ingress: true
+ingress_port: 0
+ingress_panel: true
+panel_icon: mdi:robot
+panel_title: Claude at Home
+homeassistant_api: true
+hassio_api: true
+hassio_role: manager
+# Lets Claude inspect and manage the Docker layer: which apps are running,
+# what is eating disk, image cleanup. Requires the user to turn Protection
+# mode off; without that this is simply unavailable and everything else
+# still works.
+docker_api: true
+map:
+  - homeassistant_config:rw
+options:
+  session_name: claude-at-home
+  permission_mode: auto
+  remote_control: true
+schema:
+  session_name: "str?"
+  permission_mode: "list(auto|bypass permissions|accept edits|plan|manual|never ask)?"
+  remote_control: "bool?"
+# No `image:` on purpose — Supervisor builds this from the Dockerfile in
+# place. Add `image:` (plus CI publishing) only when shipping prebuilt.

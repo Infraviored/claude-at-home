@@ -1,0 +1,7 @@
+#!/usr/bin/env bashio
+# ==============================================================================
+# Always let s6 restart the web terminal — in particular after it exits
+# early because the tmux session did not exist yet. That self-heals within
+# seconds and must never halt the container.
+# ==============================================================================
+bashio::log.info "Web terminal exited (${1}) — restarting."

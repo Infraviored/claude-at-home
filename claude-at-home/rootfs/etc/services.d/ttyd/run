@@ -1,0 +1,42 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Web terminal attached to the persistent Claude session.
+#
+# Binds inside the container only. This add-on does not use host
+# networking and publishes no ports, so the container's only interface is
+# on Supervisor's internal Docker network — the sole way in is HA's
+# authenticated ingress proxy. No LAN exposure, no SSH daemon.
+#
+# Note: do NOT add `-i hassio` here. That interface exists only in the
+# host network namespace, so on a non-host-network app the bind fails and
+# ingress can never reach ttyd.
+# ==============================================================================
+set -u
+
+readonly SOCK=/data/tmux.sock
+
+SESSION="$(bashio::config 'session_name' 'claude-at-home')"
+[ -n "${SESSION}" ] && [ "${SESSION}" != "null" ] || SESSION="claude-at-home"
+
+# attach-session (not `new -A`): if the claude service hasn't created the
+# session yet, fail loudly rather than silently serving an empty shell.
+# s6 restarts this within seconds, by which time the session exists.
+if ! tmux -S "${SOCK}" has-session -t "${SESSION}" 2>/dev/null; then
+    bashio::log.info "Waiting for tmux session '${SESSION}'..."
+    sleep 3
+    exit 1
+fi
+
+# bashio renamed its add-on helpers to `app` when HA renamed the concept;
+# which name exists depends on the base image's bashio version.
+if declare -F bashio::app.ingress_port >/dev/null 2>&1; then
+    INGRESS_PORT="$(bashio::app.ingress_port)"
+else
+    INGRESS_PORT="$(bashio::addon.ingress_port)"
+fi
+
+bashio::log.info "Starting web terminal on ingress port ${INGRESS_PORT}..."
+exec ttyd \
+    -p "${INGRESS_PORT}" \
+    --writable \
+    tmux -u -S "${SOCK}" attach-session -t "${SESSION}"
