@@ -35,6 +35,7 @@ its prior conversation.
 session_name: claude-at-home
 permission_mode: auto
 remote_control: true
+usage_sensors: true
 ```
 
 Changing any of these takes effect when the app restarts.
@@ -69,6 +70,36 @@ has to be at the terminal for work to continue.
 Lets you drive this session from the Claude apps and claude.ai instead of
 only from the terminal here. Turn it off to keep the session local to this
 Home Assistant instance.
+
+### Option: `usage_sensors`
+
+Publishes how much of your Claude plan is used as Home Assistant sensors,
+refreshed every five minutes:
+
+| Entity | |
+|---|---|
+| `sensor.claude_5h_usage` | percent of the 5-hour window used |
+| `sensor.claude_7d_usage` | percent of the 7-day window used |
+| `sensor.claude_extra_usage` | percent of extra usage, if your plan has any |
+| `sensor.claude_5h_resets_at` | when the 5-hour window turns over |
+| `sensor.claude_7d_resets_at` | when the 7-day window turns over |
+| `sensor.claude_usage_last_updated` | when the numbers were last refreshed — if it goes stale, the poller is down |
+
+The reset times are rounded to the minute and only written when they
+actually move — the API reports them as *now plus what is left*, so the raw
+value jitters by fractions of a second on every poll and would otherwise
+fill your history with meaningless changes. They are timestamp entities, so
+a countdown card or a template can point straight at them; they are also mirrored as `resets_at` and
+`resets_in_s` attributes on the usage sensors. Nothing is declared in YAML —
+the entities appear on their own once you have logged in. Turn the option off
+and they stop updating; delete them from the entity registry to remove them.
+
+There is deliberately no "window elapsed" sensor: it is derivable at display
+time from the reset timestamp and the fixed window length (5h = 18000s,
+7d = 604800s).
+
+The numbers come from your Claude account, not from this app, so they cover
+everything on the account, not just what happened here.
 
 ## Access and permissions
 
@@ -180,6 +211,13 @@ Claude exits for any reason, the session is rebuilt and resumed with
 that same tmux session and serves it over ingress. Because both are
 supervised independently, either can crash and recover without the other
 noticing.
+
+Usage numbers are fetched by a third supervised service. It reads the OAuth
+token from the app's own storage — Home Assistant Core runs in a separate
+container and cannot see that file, which is why this cannot be a native
+Home Assistant sensor — and pushes only the derived percentages through the
+Supervisor's Core API proxy, authenticated with the app's own token. The
+token itself never leaves the app.
 
 The bundled skills live in the image at `/opt/ha-skills`, and a startup
 task links them into the persistent volume. Linking rather than copying is

@@ -58,6 +58,10 @@ are bundled, so Claude writes automations the way Home Assistant wants them
 written — native constructs over templates, the right helper for the job,
 the correct automation mode — instead of plausible-looking YAML.
 
+**It reports on itself.** Plan usage lands in Home Assistant as ordinary
+sensors, so how much of your Claude limit is left is something you can put
+on a dashboard or automate on, like any other measurement in the house.
+
 **It stays out of your way.** No entities, no dashboard edits, no files
 dropped in your config directory. Uninstall it and nothing is left behind
 but what Claude changed on purpose.
@@ -86,13 +90,14 @@ Keep backups. You would for anything that edits your config.
 
 ## Configuration
 
-Three options, all optional:
+Four options, all optional:
 
 | Option | Default | |
 |---|---|---|
 | `permission_mode` | `auto` | `auto`, `bypass permissions`, `accept edits`, `plan`, `manual`, `never ask` |
 | `remote_control` | `true` | Drive the session from the Claude apps and claude.ai as well as the terminal |
 | `session_name` | `claude-at-home` | Name of the tmux session and the Remote Control target |
+| `usage_sensors` | `false` | Publish Claude plan usage as `sensor.claude_5h_usage` / `sensor.claude_7d_usage` |
 
 [Details →](claude-at-home/DOCS.md#configuration)
 

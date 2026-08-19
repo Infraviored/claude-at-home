@@ -10,6 +10,8 @@ FROM ${BUILD_FROM}
 #   python3   - HA configs contain Python (pyscript, AppDaemon, helpers)
 #   jq / docker-cli - inspecting the Supervisor API and the Docker layer
 #               (the latter only works with Protection mode off)
+#   coreutils - busybox `date -d` cannot parse the ISO timestamps the usage
+#               API returns
 #   libstdc++ / gcompat - the Claude Code native build is glibc-linked
 RUN apk add --no-cache \
         tmux \
@@ -19,6 +21,7 @@ RUN apk add --no-cache \
         python3 \
         curl \
         jq \
+        coreutils \
         docker-cli \
         libstdc++ \
         gcompat
@@ -43,6 +46,7 @@ COPY vendor/ha-skills/LICENSE /opt/ha-skills/LICENSE
 COPY rootfs /
 
 RUN chmod +x \
+        /usr/bin/claude-usage.sh \
         /etc/cont-init.d/*.sh \
         /etc/services.d/*/run \
         /etc/services.d/*/finish

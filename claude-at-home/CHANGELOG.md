@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+
+- Publish Claude's account usage as six Home Assistant sensors: usage in the
+  5-hour, 7-day and extra windows, a timestamp for when each window resets,
+  and a last-updated diagnostic. Put them on a dashboard, or automate on
+  them. Off unless you turn the new `usage_sensors` option on.
+- Sensors are only written when their value changes, so a value that holds
+  still does not fill the recorder with identical states. Reset times are
+  rounded to the minute for the same reason.
+
 ## 1.1.0
 
 - Ship the [Home Assistant agent skills][ha-skills], so Claude knows Home
