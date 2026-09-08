@@ -13,6 +13,10 @@ set -u
 readonly SOCK=/data/tmux.sock
 readonly INTERVAL=10
 readonly NOTIFICATION_ID=claude_at_home_login
+# Notifications do not survive a Home Assistant restart. Without a periodic
+# re-post, one that vanishes while the prompt is still up is never seen
+# again - the prompt does not change, so nothing would trigger a new post.
+readonly REPOST_EVERY=30
 readonly API="http://supervisor/core/api/services/persistent_notification"
 
 SESSION="$(bashio::config 'session_name' 'claude-at-home')"
@@ -32,33 +36,41 @@ call() {  # service, payload
 
 # The terminal hard-wraps the URL across several lines with no wrap marker,
 # so the lines have to be glued back together. Everything from the match to
-# the end of the pane is joined, then the URL is read up to the first space -
-# which is the indented help text that follows it.
+# the end of the pane is joined, then the URL is read off it. The match is
+# bounded to characters that can legally appear in the query string: after
+# joining, "up to the first space" would happily run on through a box-drawing
+# character or the next line's first word, and the sanity check below cannot
+# see the difference because it only tests for substrings.
 current_url() {
     tmux -S "${SOCK}" capture-pane -p -t "${SESSION}" 2>/dev/null \
         | sed -n '/oauth\/authorize/,$p' \
         | tr -d '\n' \
-        | grep -o 'https://claude\.com/[a-z/]*oauth/authorize[^ ]*' \
+        | grep -oE 'https://claude\.com/[a-z/]*oauth/authorize\?[A-Za-z0-9._~%&=+-]*' \
         | head -1
 }
 
 bashio::log.info "Watching for sign-in prompts."
 notified=""
+cycle=0
 
 while true; do
     url="$(current_url || true)"
+    repost=false
+    [ $(( cycle % REPOST_EVERY )) -eq 0 ] && repost=true
+    cycle=$(( cycle + 1 ))
 
     # Both parameters are always present on a real authorize URL; requiring
     # them keeps a half-drawn frame from being posted as a broken link.
     if [ -n "${url}" ] && [[ "${url}" == *"code_challenge="* ]] && [[ "${url}" == *"state="* ]]; then
-        if [ "${url}" != "${notified}" ]; then
+        if [ "${url}" != "${notified}" ] || [ "${repost}" = true ]; then
             payload="$(jq -nc --arg id "${NOTIFICATION_ID}" --arg url "${url}" \
                 '{notification_id: $id,
                   title: "Claude at Home needs you to sign in",
                   message: ("[Open the Claude sign-in page](" + $url + ")\n\nSign in, then paste the code it gives you into the Claude at Home terminal.")}')"
             if [ "$(call create "${payload}")" = "200" ]; then
+                [ "${url}" != "${notified}" ] \
+                    && bashio::log.info "Sign-in link posted as a notification."
                 notified="${url}"
-                bashio::log.info "Sign-in link posted as a notification."
             else
                 bashio::log.warning "Could not post the sign-in notification."
             fi

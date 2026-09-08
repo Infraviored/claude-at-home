@@ -12,16 +12,32 @@ readonly DEST=/data/.claude/skills
 [ -d "${SRC}" ] || exit 0
 mkdir -p "${DEST}"
 
+# Drop links to skills a previous version of this app shipped and this one
+# no longer does, so nothing is left pointing at a path inside the image
+# that has since gone away.
+for link in "${DEST}"/*; do
+    [ -L "${link}" ] || continue
+    case "$(readlink "${link}")" in
+        "${SRC}"/*) [ -e "${link}" ] || rm -f "${link}" ;;
+    esac
+done
+
 for skill in "${SRC}"/*; do
     [ -d "${skill}" ] || continue
     name="$(basename "${skill}")"
     target="${DEST}/${name}"
 
-    # Never clobber a real directory - that would be a skill the user
-    # installed themselves under the same name.
-    if [ -e "${target}" ] && [ ! -L "${target}" ]; then
-        bashio::log.warning "Skill '${name}' already exists in your own skills - leaving it alone."
-        continue
+    # Never clobber anything the user put here themselves - a directory, or
+    # a symlink of their own into a repository somewhere. Only links this
+    # app made, which point into the image, are ours to rewrite.
+    if [ -e "${target}" ] || [ -L "${target}" ]; then
+        case "$(readlink "${target}" 2>/dev/null)" in
+            "${SRC}"/*) ;;
+            *)
+                bashio::log.warning "Skill '${name}' already exists in your own skills - leaving it alone."
+                continue
+                ;;
+        esac
     fi
 
     ln -sfn "${skill}" "${target}"

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.1
+
+Fixes from a review of everything since 1.0.0. None of them were visible on
+a healthy system; all of them would have bitten eventually.
+
+- The usage sensors could stop updating entirely if the API left a reset
+  time out of its answer, and the 7-day percentage could end up holding a
+  timestamp instead of a number.
+- A token refresh that succeeded could still be reported as a failure.
+- The sign-in notification is re-posted periodically, so it is not lost for
+  good if Home Assistant restarts while the prompt is up.
+- The sign-in link can no longer pick up stray characters from the terminal.
+- Skills you installed yourself are left alone even when they are symlinks,
+  and links to skills a previous version shipped are cleaned up.
+- The seconds-until-reset attribute is gone from the usage sensors; it
+  changed every poll, which defeated the write deduplication. The
+  `sensor.claude_5h_resets_at` / `sensor.claude_7d_resets_at` entities carry
+  the same information.
+
 ## 1.3.0
 
 - When Claude asks you to sign in again, the sign-in link is posted as a

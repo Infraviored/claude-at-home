@@ -59,12 +59,23 @@ push() {
     esac
 }
 
-window_attrs() {  # friendly name, resets_at, resets_in
-    jq -nc --arg n "$1" --arg at "$2" --arg in "$3" \
+# Attributes have to be stable, or the dedupe below never fires: anything
+# that changes every poll (a countdown, an unrounded timestamp) would force
+# a write every cycle and put the history noise straight back. The seconds
+# left are deliberately not published here - sensor.claude_*_resets_at
+# carries the same information as its own entity.
+#
+# `select(. != "")` would be wrong here: jq builds objects as a product over
+# value streams, so a field yielding `empty` produces no object at all, not
+# an object without that field - and the caller would then feed "" to
+# --argjson and fail the push.
+window_attrs() {  # friendly name, resets_at
+    local at=""
+    [ -n "$2" ] && at="$(round_to_minute "$2")"
+    jq -nc --arg n "$1" --arg at "${at}" \
         '{friendly_name: $n, icon: "mdi:brain", unit_of_measurement: "%",
           state_class: "measurement",
-          resets_at: ($at | select(. != "")),
-          resets_in_s: ($in | tonumber? // null)}'
+          resets_at: (if $at == "" then null else $at end)}'
 }
 
 resets_attrs() {  # friendly name
@@ -89,14 +100,25 @@ while true; do
         fi
     elif env="$(/usr/bin/claude-usage.sh env 2>/tmp/claude-usage.err)"; then
         warned_creds=false
-        # shellcheck disable=SC1090
-        source <(printf '%s\n' "${env}")
+        # The values come from an HTTP response, so they are read as data.
+        # `source` would execute anything a value happened to contain.
+        CLAUDE_5H_PCT=""; CLAUDE_5H_RESETS_AT=""
+        CLAUDE_7D_PCT=""; CLAUDE_7D_RESETS_AT=""; CLAUDE_EXTRA_PCT=""
+        while IFS="=" read -r key value; do
+            case "${key}" in
+                CLAUDE_5H_PCT)       CLAUDE_5H_PCT="${value}" ;;
+                CLAUDE_5H_RESETS_AT) CLAUDE_5H_RESETS_AT="${value}" ;;
+                CLAUDE_7D_PCT)       CLAUDE_7D_PCT="${value}" ;;
+                CLAUDE_7D_RESETS_AT) CLAUDE_7D_RESETS_AT="${value}" ;;
+                CLAUDE_EXTRA_PCT)    CLAUDE_EXTRA_PCT="${value}" ;;
+            esac
+        done <<< "${env}"
         now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
         push "sensor.claude_5h_usage" "${CLAUDE_5H_PCT:-unknown}" \
-            "$(window_attrs "Claude 5h Usage" "${CLAUDE_5H_RESETS_AT:-}" "${CLAUDE_5H_RESETS_IN:-}")" || true
+            "$(window_attrs "Claude 5h Usage" "${CLAUDE_5H_RESETS_AT:-}")" || true
         push "sensor.claude_7d_usage" "${CLAUDE_7D_PCT:-unknown}" \
-            "$(window_attrs "Claude 7d Usage" "${CLAUDE_7D_RESETS_AT:-}" "${CLAUDE_7D_RESETS_IN:-}")" || true
+            "$(window_attrs "Claude 7d Usage" "${CLAUDE_7D_RESETS_AT:-}")" || true
         push "sensor.claude_extra_usage" "${CLAUDE_EXTRA_PCT:-0}" \
             "$(jq -nc '{friendly_name: "Claude Extra Usage", icon: "mdi:brain",
                         unit_of_measurement: "%", state_class: "measurement"}')" || true

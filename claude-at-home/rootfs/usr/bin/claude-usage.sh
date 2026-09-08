@@ -1,5 +1,8 @@
 #!/bin/bash
-# Vendored unmodified from Infraviored/antigravity-skills (statusline tools).
+# Vendored from Infraviored/antigravity-skills (statusline tools), with two
+# correctness fixes that belong upstream as well: the field split below no
+# longer loses a position on an empty value, and do_refresh now updates
+# $exp so the expiry check cannot fail a refresh that just succeeded.
 # Only the token-handling and caching logic below is load-bearing here; the
 # bar/line/prom output modes are unused by the app but kept intact so this
 # stays a straight copy that can be re-synced.
@@ -112,6 +115,8 @@ do_refresh() {
   sync "$tmp" 2>/dev/null || true
   mv -f "$tmp" "$CREDS" || return 1
   tok=$at_new
+  exp=$exp_new   # the expiry check below runs after this; a stale value
+                 # there reports failure for a refresh that just succeeded
   return 0
 }
 
@@ -169,13 +174,17 @@ fi
 
 # five_hour / seven_day are the canonical pair. `limits[]` carries the same
 # numbers plus per-model weekly scopes, which are null on most plans.
-read -r p5 r5 p7 r7 extra_pct <<<"$(jq -r '
+# Split on a non-whitespace delimiter. `read` collapses runs of IFS
+# *whitespace*, so a tab-separated line with an empty resets_at would shift
+# every later field one position left - the 7d percentage would end up
+# holding a timestamp. A tab-only IFS does not help; tab is whitespace too.
+IFS='|' read -r p5 r5 p7 r7 extra_pct <<<"$(jq -r '
   [ (.five_hour.utilization // 0)
   , (.five_hour.resets_at   // "")
   , (.seven_day.utilization // 0)
   , (.seven_day.resets_at   // "")
   , (.extra_usage.utilization // 0)
-  ] | @tsv' <<<"$resp" | tr '\t' ' ')"
+  ] | map(tostring) | join("|")' <<<"$resp")"
 
 secs_until() { # ISO8601 -> seconds from now, 0 if empty/past
   [ -n "${1:-}" ] || { echo 0; return; }

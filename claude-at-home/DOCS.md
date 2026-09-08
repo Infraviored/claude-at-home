@@ -90,8 +90,9 @@ The reset times are rounded to the minute and only written when they
 actually move — the API reports them as *now plus what is left*, so the raw
 value jitters by fractions of a second on every poll and would otherwise
 fill your history with meaningless changes. They are timestamp entities, so
-a countdown card or a template can point straight at them; they are also mirrored as `resets_at` and
-`resets_in_s` attributes on the usage sensors. Nothing is declared in YAML —
+a countdown card or a template can point straight at them, and the rounded
+value is mirrored as a `resets_at` attribute on the usage sensors. Nothing
+is declared in YAML —
 the entities appear on their own once you have logged in. Turn the option off
 and they stop updating; delete them from the entity registry to remove them.
 
