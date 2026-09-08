@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/apps/configuration#app-configuration
 name: Claude at Home
-version: "1.0.0"
+version: "1.3.0"
 slug: claude-at-home
 description: Persistent Claude Code session with an ingress-only web terminal in your sidebar
 url: "https://github.com/Infraviored/claude-at-home"
@@ -27,9 +27,13 @@ options:
   session_name: claude-at-home
   permission_mode: auto
   remote_control: true
+  usage_sensors: false
+  login_notification: true
 schema:
   session_name: "str?"
   permission_mode: "list(auto|bypass permissions|accept edits|plan|manual|never ask)?"
   remote_control: "bool?"
+  usage_sensors: "bool?"
+  login_notification: "bool?"
 # No `image:` on purpose — Supervisor builds this from the Dockerfile in
 # place. Add `image:` (plus CI publishing) only when shipping prebuilt.

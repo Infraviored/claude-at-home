@@ -1,0 +1,75 @@
+#!/usr/bin/with-contenv bashio
+# Surfaces Claude's sign-in link as a Home Assistant notification.
+#
+# When the session logs out, Claude prints an OAuth URL into the terminal
+# and waits for the code. That URL is unusable on a phone: the Home
+# Assistant app's web view will not let you select text, so the link can be
+# read but never copied. This watches the terminal for such a URL and posts
+# it as a persistent notification instead, where it is a normal tappable
+# link. Pasting the code back into the terminal works fine, so only the
+# outbound half needs help.
+set -u
+
+readonly SOCK=/data/tmux.sock
+readonly INTERVAL=10
+readonly NOTIFICATION_ID=claude_at_home_login
+readonly API="http://supervisor/core/api/services/persistent_notification"
+
+SESSION="$(bashio::config 'session_name' 'claude-at-home')"
+[ -n "${SESSION}" ] && [ "${SESSION}" != "null" ] || SESSION="claude-at-home"
+
+if ! bashio::config.true 'login_notification'; then
+    bashio::log.info "Sign-in notifications are turned off."
+    exec sleep infinity
+fi
+
+call() {  # service, payload
+    curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "$2" "${API}/$1"
+}
+
+# The terminal hard-wraps the URL across several lines with no wrap marker,
+# so the lines have to be glued back together. Everything from the match to
+# the end of the pane is joined, then the URL is read up to the first space -
+# which is the indented help text that follows it.
+current_url() {
+    tmux -S "${SOCK}" capture-pane -p -t "${SESSION}" 2>/dev/null \
+        | sed -n '/oauth\/authorize/,$p' \
+        | tr -d '\n' \
+        | grep -o 'https://claude\.com/[a-z/]*oauth/authorize[^ ]*' \
+        | head -1
+}
+
+bashio::log.info "Watching for sign-in prompts."
+notified=""
+
+while true; do
+    url="$(current_url || true)"
+
+    # Both parameters are always present on a real authorize URL; requiring
+    # them keeps a half-drawn frame from being posted as a broken link.
+    if [ -n "${url}" ] && [[ "${url}" == *"code_challenge="* ]] && [[ "${url}" == *"state="* ]]; then
+        if [ "${url}" != "${notified}" ]; then
+            payload="$(jq -nc --arg id "${NOTIFICATION_ID}" --arg url "${url}" \
+                '{notification_id: $id,
+                  title: "Claude at Home needs you to sign in",
+                  message: ("[Open the Claude sign-in page](" + $url + ")\n\nSign in, then paste the code it gives you into the Claude at Home terminal.")}')"
+            if [ "$(call create "${payload}")" = "200" ]; then
+                notified="${url}"
+                bashio::log.info "Sign-in link posted as a notification."
+            else
+                bashio::log.warning "Could not post the sign-in notification."
+            fi
+        fi
+    elif [ -n "${notified}" ]; then
+        # Prompt is gone - either signed in or cancelled. Either way the
+        # link is dead, so the notification should not linger.
+        call dismiss "$(jq -nc --arg id "${NOTIFICATION_ID}" '{notification_id: $id}')" >/dev/null
+        notified=""
+        bashio::log.info "Sign-in prompt gone — notification dismissed."
+    fi
+
+    sleep "${INTERVAL}"
+done

@@ -6,17 +6,22 @@ FROM ${BUILD_FROM}
 #   tmux      - holds the persistent Claude session
 #   ttyd      - serves that tmux session as the ingress web terminal
 #   git       - HA configs are usually git-tracked, and Claude works on them
+#   openssh-client - so git can push over SSH (keys live in /data/.ssh)
 #   python3   - HA configs contain Python (pyscript, AppDaemon, helpers)
 #   jq / docker-cli - inspecting the Supervisor API and the Docker layer
 #               (the latter only works with Protection mode off)
+#   coreutils - busybox `date -d` cannot parse the ISO timestamps the usage
+#               API returns
 #   libstdc++ / gcompat - the Claude Code native build is glibc-linked
 RUN apk add --no-cache \
         tmux \
         ttyd \
         git \
+        openssh-client \
         python3 \
         curl \
         jq \
+        coreutils \
         docker-cli \
         libstdc++ \
         gcompat
@@ -31,10 +36,18 @@ RUN mkdir -p "${CLAUDE_SEED_HOME}" \
     && HOME="${CLAUDE_SEED_HOME}" curl -fsSL https://claude.ai/install.sh | HOME="${CLAUDE_SEED_HOME}" bash \
     && test -x "${CLAUDE_SEED_HOME}/.local/bin/claude"
 
+# Home Assistant agent skills (MIT, github.com/homeassistant-ai/skills),
+# vendored as a git submodule and pinned to a commit. Baked into the image
+# rather than into /data, so updating the app updates the skills too.
+COPY vendor/ha-skills/skills /opt/ha-skills/skills
+COPY vendor/ha-skills/LICENSE /opt/ha-skills/LICENSE
+
 # Copy root filesystem
 COPY rootfs /
 
 RUN chmod +x \
+        /usr/bin/claude-usage.sh \
+        /etc/cont-init.d/*.sh \
         /etc/services.d/*/run \
         /etc/services.d/*/finish
 

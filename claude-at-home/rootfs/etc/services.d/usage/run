@@ -1,0 +1,124 @@
+#!/usr/bin/with-contenv bashio
+# Publishes Claude's account usage into Home Assistant as sensors.
+#
+# Why this runs here and not as a native Home Assistant sensor: the OAuth
+# credentials live in this app's own storage, which Home Assistant Core
+# cannot see - it runs in its own container with only your config directory
+# mounted. So nothing on the Core side can read the token or call the API.
+# This service runs where the credentials actually are and sends Home
+# Assistant only the finished numbers. The token never leaves this app.
+#
+# Writing goes through the Supervisor's Core proxy with this app's own
+# token, so there is no long-lived access token to create or store.
+set -u
+
+readonly INTERVAL=300
+readonly API="http://supervisor/core/api/states"
+# States pushed over the API do not survive a Home Assistant restart, so
+# re-push everything once an hour even when nothing changed.
+readonly REPUSH_EVERY=12
+
+if ! bashio::config.true 'usage_sensors'; then
+    bashio::log.info "Usage sensors are turned off."
+    exec sleep infinity
+fi
+
+export HOME=/data
+export CLAUDE_CREDENTIALS=/data/.claude/.credentials.json
+export CLAUDE_USAGE_AUTOREFRESH=1   # see claude-usage.sh on why this is safe
+export CLAUDE_USAGE_TTL=280         # just under INTERVAL, so every poll is live
+
+# One entity: state plus a JSON attribute blob. Home Assistant creates the
+# entity from the first push, so nothing has to be declared in YAML.
+# The usage API returns reset times as "now + remaining", so they jitter by
+# fractions of a second on every poll. Rounded to the minute they are the
+# stable timestamp they are meant to be.
+round_to_minute() {
+    date -u -d "$1 +30 seconds" +%Y-%m-%dT%H:%M:00+00:00 2>/dev/null || printf '%s' "$1"
+}
+
+# Pushing an unchanged value still writes a row in the recorder, which turns
+# a sensor that legitimately holds still into history noise. Only write when
+# the value actually moved - or when the hourly re-push is due.
+declare -A last_pushed=()
+
+push() {
+    local entity="$1" state="$2" attrs="$3" code
+    if [ "${force_push}" = false ] && [ "${last_pushed[$entity]-}" = "${state}" ]; then
+        return 0
+    fi
+    code="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -nc --arg s "${state}" --argjson a "${attrs}" \
+              '{state: $s, attributes: $a}')" \
+        "${API}/${entity}")" || code="000"
+    case "${code}" in
+        200|201) last_pushed["${entity}"]="${state}"; return 0 ;;
+        *) bashio::log.warning "Pushing ${entity} failed (HTTP ${code})."; return 1 ;;
+    esac
+}
+
+window_attrs() {  # friendly name, resets_at, resets_in
+    jq -nc --arg n "$1" --arg at "$2" --arg in "$3" \
+        '{friendly_name: $n, icon: "mdi:brain", unit_of_measurement: "%",
+          state_class: "measurement",
+          resets_at: ($at | select(. != "")),
+          resets_in_s: ($in | tonumber? // null)}'
+}
+
+resets_attrs() {  # friendly name
+    jq -nc --arg n "$1" \
+        '{friendly_name: $n, icon: "mdi:clock-alert-outline",
+          device_class: "timestamp"}'
+}
+
+bashio::log.info "Publishing Claude usage sensors every ${INTERVAL}s."
+warned_creds=false
+cycle=0
+
+while true; do
+    force_push=false
+    [ $(( cycle % REPUSH_EVERY )) -eq 0 ] && force_push=true
+    cycle=$(( cycle + 1 ))
+    if [ ! -r "${CLAUDE_CREDENTIALS}" ]; then
+        # Expected until you have logged in once - not an error.
+        if [ "${warned_creds}" = false ]; then
+            bashio::log.info "Waiting for a Claude login before reading usage."
+            warned_creds=true
+        fi
+    elif env="$(/usr/bin/claude-usage.sh env 2>/tmp/claude-usage.err)"; then
+        warned_creds=false
+        # shellcheck disable=SC1090
+        source <(printf '%s\n' "${env}")
+        now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        push "sensor.claude_5h_usage" "${CLAUDE_5H_PCT:-unknown}" \
+            "$(window_attrs "Claude 5h Usage" "${CLAUDE_5H_RESETS_AT:-}" "${CLAUDE_5H_RESETS_IN:-}")" || true
+        push "sensor.claude_7d_usage" "${CLAUDE_7D_PCT:-unknown}" \
+            "$(window_attrs "Claude 7d Usage" "${CLAUDE_7D_RESETS_AT:-}" "${CLAUDE_7D_RESETS_IN:-}")" || true
+        push "sensor.claude_extra_usage" "${CLAUDE_EXTRA_PCT:-0}" \
+            "$(jq -nc '{friendly_name: "Claude Extra Usage", icon: "mdi:brain",
+                        unit_of_measurement: "%", state_class: "measurement"}')" || true
+
+        # The reset times are also attributes on the usage sensors, but a
+        # countdown card or a template wants an entity it can point at.
+        [ -n "${CLAUDE_5H_RESETS_AT:-}" ] && push "sensor.claude_5h_resets_at" "$(round_to_minute "${CLAUDE_5H_RESETS_AT}")" \
+            "$(resets_attrs "Claude 5h Window Resets At")" || true
+        [ -n "${CLAUDE_7D_RESETS_AT:-}" ] && push "sensor.claude_7d_resets_at" "$(round_to_minute "${CLAUDE_7D_RESETS_AT}")" \
+            "$(resets_attrs "Claude 7d Window Resets At")" || true
+
+        # The heartbeat is the one sensor that should write every cycle - it
+        # is what tells you the poller is alive.
+        force_push=true
+        push "sensor.claude_usage_last_updated" "${now}" '{
+            "friendly_name": "Claude Usage Last Updated",
+            "icon": "mdi:update",
+            "device_class": "timestamp",
+            "entity_category": "diagnostic"
+        }' || true
+    else
+        bashio::log.warning "Could not read usage: $(head -c 200 /tmp/claude-usage.err 2>/dev/null)"
+    fi
+    sleep "${INTERVAL}"
+done
