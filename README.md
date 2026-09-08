@@ -90,13 +90,14 @@ Keep backups. You would for anything that edits your config.
 
 ## Configuration
 
-Four options, all optional:
+Five options, all optional:
 
 | Option | Default | |
 |---|---|---|
 | `permission_mode` | `auto` | `auto`, `bypass permissions`, `accept edits`, `plan`, `manual`, `never ask` |
 | `remote_control` | `true` | Drive the session from the Claude apps and claude.ai as well as the terminal |
 | `session_name` | `claude-at-home` | Name of the tmux session and the Remote Control target |
+| `login_notification` | `true` | Post Claude's sign-in link as a notification, so it is tappable on a phone |
 | `usage_sensors` | `false` | Publish Claude plan usage as `sensor.claude_5h_usage` / `sensor.claude_7d_usage` |
 
 [Details →](claude-at-home/DOCS.md#configuration)

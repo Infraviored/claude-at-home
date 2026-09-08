@@ -35,7 +35,8 @@ its prior conversation.
 session_name: claude-at-home
 permission_mode: auto
 remote_control: true
-usage_sensors: true
+usage_sensors: false
+login_notification: true
 ```
 
 Changing any of these takes effect when the app restarts.
@@ -100,6 +101,22 @@ time from the reset timestamp and the fixed window length (5h = 18000s,
 
 The numbers come from your Claude account, not from this app, so they cover
 everything on the account, not just what happened here.
+
+### Option: `login_notification`
+
+Claude signs you out every so often, and asks you to open an OAuth link and
+paste back a code. That link is printed in the terminal — where the Home
+Assistant app will not let you select text, so on a phone it can be read but
+not opened.
+
+With this on, the link is also posted as a notification, where it is an
+ordinary tappable link. Sign in, then paste the code back into the terminal;
+pasting works fine, it is only copying out that does not. The notification
+clears itself once the prompt is gone.
+
+Anyone who can open your Home Assistant can also open that link and complete
+the sign-in into your Claude account. On a normal single-household instance
+that is the same person; on a shared one, turn this off.
 
 ## Access and permissions
 
@@ -211,6 +228,10 @@ Claude exits for any reason, the session is rebuilt and resumed with
 that same tmux session and serves it over ingress. Because both are
 supervised independently, either can crash and recover without the other
 noticing.
+
+A fourth service watches the terminal for a sign-in prompt. It reads the
+pane with `tmux capture-pane`, glues the hard-wrapped URL back together and
+posts it through the same Core API proxy.
 
 Usage numbers are fetched by a third supervised service. It reads the OAuth
 token from the app's own storage — Home Assistant Core runs in a separate

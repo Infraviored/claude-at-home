@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- When Claude asks you to sign in again, the sign-in link is posted as a
+  Home Assistant notification, where it is tappable. The Home Assistant app
+  does not let you select text in the terminal, so the link was previously
+  readable but impossible to open from a phone. Turn off with the new
+  `login_notification` option.
+
 ## 1.2.0
 
 - Publish Claude's account usage as six Home Assistant sensors: usage in the
