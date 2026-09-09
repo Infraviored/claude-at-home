@@ -1,8 +1,10 @@
 #!/bin/bash
-# Vendored from Infraviored/antigravity-skills (statusline tools), with two
-# correctness fixes that belong upstream as well: the field split below no
-# longer loses a position on an empty value, and do_refresh now updates
-# $exp so the expiry check cannot fail a refresh that just succeeded.
+# Vendored from Infraviored/antigravity-skills (statusline tools), with
+# three correctness fixes that belong upstream as well: the field split
+# below no longer loses a position on an empty value, do_refresh now
+# updates $exp so the expiry check cannot fail a refresh that just
+# succeeded, and the credentials-file lock no longer relies on `flock -w`
+# (unsupported on BusyBox, see flock_wait below).
 # Only the token-handling and caching logic below is load-bearing here; the
 # bar/line/prom output modes are unused by the app but kept intact so this
 # stays a straight copy that can be re-synced.
@@ -124,13 +126,27 @@ tok=$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS")
 exp=$(jq -r '.claudeAiOauth.expiresAt // 0' "$CREDS")
 [ -n "$tok" ] || die "no claudeAiOauth.accessToken in $CREDS" 2
 
+# Wait up to $2 seconds for an exclusive lock on fd $1. `flock -w` isn't
+# available on BusyBox (Alpine/HA app containers) - only -s/-x/-u/-n - so
+# the timeout is reimplemented as a poll over `flock -n`, which both GNU
+# and BusyBox support.
+flock_wait() {
+  local fd="$1" timeout="$2" i=0
+  while [ "$i" -lt "$timeout" ]; do
+    flock -n "$fd" && return 0
+    sleep 1
+    i=$(( i + 1 ))
+  done
+  return 1
+}
+
 left_ms=$(( exp - $(now_ms) ))
 if [ "$REFRESH" = 1 ] && [ "$exp" -gt 0 ] && [ "$left_ms" -lt $(( REFRESH_MARGIN * 1000 )) ]; then
   # Serialise against other copies of this script. 200 held under flock so a
   # concurrent instance re-reads the freshly written file instead of reusing
   # the token that was just invalidated.
   exec 9>"$CREDS.lock"
-  if flock -w 30 9; then
+  if flock_wait 9 30; then
     exp=$(jq -r '.claudeAiOauth.expiresAt // 0' "$CREDS")
     if [ $(( exp - $(now_ms) )) -lt $(( REFRESH_MARGIN * 1000 )) ]; then
       do_refresh || printf 'warning: token refresh failed, using existing token\n' >&2

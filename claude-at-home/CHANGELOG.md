@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2
+
+- The usage sensors could stop updating entirely on Alpine/BusyBox systems:
+  the credentials-file lock used `flock -w`, a GNU-only flag BusyBox's
+  `flock` doesn't support, so every token refresh attempt failed outright
+  once the token neared expiry. The wait-with-timeout is now reimplemented
+  as a poll over `flock -n`, which both flavors support.
+
 ## 1.3.1
 
 Fixes from a review of everything since 1.0.0. None of them were visible on
