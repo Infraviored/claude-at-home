@@ -7,21 +7,33 @@
 # The dashboard's machine daemon is not part of this image. It is fetched from
 # the dashboard itself on every start, with this machine's token, so it always
 # matches the server it talks to and updating the dashboard never needs a new
-# version of this app. Nothing runs unless both server and token are set.
+# version of this app. Nothing runs unless it is switched on and both server
+# and token are set.
 # ==============================================================================
 set -u
 
 readonly BUNDLE=/data/claude-voice-agent.mjs
 
-SERVER="$(bashio::config 'claude_voice_server' '')"
-TOKEN="$(bashio::config 'claude_voice_token' '')"
-NAME="$(bashio::config 'claude_voice_name' 'homeassistant')"
-[ "${SERVER}" = "null" ] && SERVER=""
-[ "${TOKEN}" = "null" ] && TOKEN=""
-[ -n "${NAME}" ] && [ "${NAME}" != "null" ] || NAME="homeassistant"
+# Settings live in the collapsible "Claude Voice" group. 1.4.0 had them as
+# flat options; those are still read if present, so an update loses nothing.
+cfg() {  # new key, old key
+    local v
+    v="$(bashio::config "claude_voice.$1" '')"
+    if [ -z "${v}" ] || [ "${v}" = "null" ]; then
+        v="$(bashio::config "$2" '')"
+    fi
+    [ "${v}" = "null" ] && v=""
+    printf '%s' "${v}"
+}
 
-if [ -z "${SERVER}" ] || [ -z "${TOKEN}" ]; then
-    bashio::log.info "Claude Voice is not configured."
+ENABLED="$(bashio::config 'claude_voice.enabled' 'false')"
+SERVER="$(cfg server claude_voice_server)"
+TOKEN="$(cfg token claude_voice_token)"
+NAME="$(cfg name claude_voice_name)"
+[ -n "${NAME}" ] || NAME="homeassistant"
+
+if [ "${ENABLED}" != "true" ] || [ -z "${SERVER}" ] || [ -z "${TOKEN}" ]; then
+    bashio::log.info "Claude Voice is off."
     exec sleep infinity
 fi
 

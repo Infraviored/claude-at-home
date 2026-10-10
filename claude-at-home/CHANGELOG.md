@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+- The Claude Voice settings are now one collapsed group with a
+  **Use Claude Voice** switch, off by default. Settings entered in 1.4.0
+  keep working; switch it on once.
+- Readable names for the usage sensor and sign-in notification options.
+
 ## 1.4.0
 
 - Optional connection to a Claude Voice dashboard: set

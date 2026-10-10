@@ -37,9 +37,11 @@ permission_mode: auto
 remote_control: true
 usage_sensors: false
 login_notification: true
-claude_voice_server: ""
-claude_voice_token: ""
-claude_voice_name: homeassistant
+claude_voice:
+  enabled: false
+  server: ""
+  token: ""
+  name: homeassistant
 ```
 
 Changing any of these takes effect when the app restarts.
@@ -122,15 +124,17 @@ Anyone who can open your Home Assistant can also open that link and complete
 the sign-in into your Claude account. On a normal single-household instance
 that is the same person; on a shared one, turn this off.
 
-### Options: `claude_voice_server`, `claude_voice_token`, `claude_voice_name`
+### Option group: `claude_voice`
 
 Optional. Connects this session to a [Claude Voice][claude-voice] dashboard,
 where it then appears as a tab beside your other machines' sessions and can
 be read, listened to and answered.
 
 On the dashboard's server, create a token for this machine with
-`node bin/add-agent.mjs homeassistant`, then enter the dashboard's address,
-that token and the same name here. With server or token empty nothing runs.
+`node bin/add-agent.mjs homeassistant`. Then open the collapsed
+**Claude Voice** group here, switch on **Use Claude Voice** and enter the
+dashboard's address, that token and the same name. Switched off, nothing
+runs.
 
 The dashboard's small connection daemon is not part of this app: it is
 downloaded from the dashboard on every start, with the token, into
