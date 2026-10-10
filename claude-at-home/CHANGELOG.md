@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Optional connection to a Claude Voice dashboard: set
+  `claude_voice_server`, `claude_voice_token` and `claude_voice_name`, and
+  this session shows up there and can be answered from it. The daemon is
+  fetched from the dashboard on each start; with the options empty nothing
+  changes. Adds `nodejs` to the image.
+
 ## 1.3.2
 
 - The usage sensors could stop updating entirely on Alpine/BusyBox systems:

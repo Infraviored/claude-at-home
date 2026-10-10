@@ -13,6 +13,7 @@ FROM ${BUILD_FROM}
 #   coreutils - busybox `date -d` cannot parse the ISO timestamps the usage
 #               API returns
 #   libstdc++ / gcompat - the Claude Code native build is glibc-linked
+#   nodejs    - runs the Claude Voice daemon, only when that is configured
 RUN apk add --no-cache \
         tmux \
         ttyd \
@@ -24,7 +25,8 @@ RUN apk add --no-cache \
         coreutils \
         docker-cli \
         libstdc++ \
-        gcompat
+        gcompat \
+        nodejs
 
 # Bake the Claude Code CLI into the image so first boot needs no ~283MB
 # download. Installed under /opt/claude-home; the claude service seeds it

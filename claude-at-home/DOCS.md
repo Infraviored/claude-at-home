@@ -37,6 +37,9 @@ permission_mode: auto
 remote_control: true
 usage_sensors: false
 login_notification: true
+claude_voice_server: ""
+claude_voice_token: ""
+claude_voice_name: homeassistant
 ```
 
 Changing any of these takes effect when the app restarts.
@@ -118,6 +121,21 @@ clears itself once the prompt is gone.
 Anyone who can open your Home Assistant can also open that link and complete
 the sign-in into your Claude account. On a normal single-household instance
 that is the same person; on a shared one, turn this off.
+
+### Options: `claude_voice_server`, `claude_voice_token`, `claude_voice_name`
+
+Optional. Connects this session to a [Claude Voice][claude-voice] dashboard,
+where it then appears as a tab beside your other machines' sessions and can
+be read, listened to and answered.
+
+On the dashboard's server, create a token for this machine with
+`node bin/add-agent.mjs homeassistant`, then enter the dashboard's address,
+that token and the same name here. With server or token empty nothing runs.
+
+The dashboard's small connection daemon is not part of this app: it is
+downloaded from the dashboard on every start, with the token, into
+`/data/claude-voice-agent.mjs`. It only connects outwards; this app still
+publishes no ports.
 
 ## Access and permissions
 
@@ -241,6 +259,10 @@ Home Assistant sensor — and pushes only the derived percentages through the
 Supervisor's Core API proxy, authenticated with the app's own token. The
 token itself never leaves the app.
 
+When configured, a fifth service runs the Claude Voice daemon with the same
+home directory and tmux socket as the Claude session, so the dashboard sees
+its history and can type into its pane.
+
 The bundled skills live in the image at `/opt/ha-skills`, and a startup
 task links them into the persistent volume. Linking rather than copying is
 what keeps them current across updates while leaving your own skills
@@ -251,3 +273,4 @@ which is what lets the session survive rebuilds and updates rather than
 just restarts.
 
 [claude-code]: https://claude.com/claude-code
+[claude-voice]: https://github.com/Infraviored/claude-code-voice

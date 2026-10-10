@@ -17,3 +17,16 @@ configuration:
     description: >-
       Let this session be driven from the Claude apps and claude.ai, not
       only from the terminal here.
+  claude_voice_server:
+    name: Claude Voice server
+    description: >-
+      Address of a Claude Voice dashboard (e.g. https://voice.example.com) to
+      show this session in. Leave empty to not connect anywhere.
+  claude_voice_token:
+    name: Claude Voice token
+    description: >-
+      This machine's token from the dashboard (bin/add-agent.mjs there).
+  claude_voice_name:
+    name: Claude Voice machine name
+    description: >-
+      The name this machine has on the dashboard; must match the token.
