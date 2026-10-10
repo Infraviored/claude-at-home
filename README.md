@@ -53,6 +53,15 @@ Assistant's internal network and is served through authenticated ingress.
 No SSH daemon, no published port, nothing reachable from your LAN or the
 internet.
 
+**It knows Home Assistant.** The [Home Assistant agent skills][ha-skills]
+are bundled, so Claude writes automations the way Home Assistant wants them
+written — native constructs over templates, the right helper for the job,
+the correct automation mode — instead of plausible-looking YAML.
+
+**It reports on itself.** Plan usage lands in Home Assistant as ordinary
+sensors, so how much of your Claude limit is left is something you can put
+on a dashboard or automate on, like any other measurement in the house.
+
 **It stays out of your way.** No entities, no dashboard edits, no files
 dropped in your config directory. Uninstall it and nothing is left behind
 but what Claude changed on purpose.
@@ -81,21 +90,31 @@ Keep backups. You would for anything that edits your config.
 
 ## Configuration
 
-Three options, all optional:
+Five options, all optional:
 
 | Option | Default | |
 |---|---|---|
 | `permission_mode` | `auto` | `auto`, `bypass permissions`, `accept edits`, `plan`, `manual`, `never ask` |
 | `remote_control` | `true` | Drive the session from the Claude apps and claude.ai as well as the terminal |
 | `session_name` | `claude-at-home` | Name of the tmux session and the Remote Control target |
+| `login_notification` | `true` | Post Claude's sign-in link as a notification, so it is tappable on a phone |
+| `usage_sensors` | `false` | Publish Claude plan usage as `sensor.claude_5h_usage` / `sensor.claude_7d_usage` |
 
 [Details →](claude-at-home/DOCS.md#configuration)
 
+## Credits
+
+Bundles the [Home Assistant agent skills][ha-skills] by
+[homeassistant-ai](https://github.com/homeassistant-ai), vendored unmodified
+under the MIT license.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The bundled skills keep their own MIT
+license, shipped alongside them.
 
 [claude-code]: https://claude.com/claude-code
+[ha-skills]: https://github.com/homeassistant-ai/skills
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [license-shield]: https://img.shields.io/badge/license-MIT-blue.svg

@@ -1,0 +1,4 @@
+#!/usr/bin/env bashio
+# Same rule as the other services: never take the app down, always come back.
+bashio::log.info "Claude Voice connection exited (${1}) — restarting."
+sleep 5
