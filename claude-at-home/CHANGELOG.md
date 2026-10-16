@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2
+
+- Updating from 1.4.0 turned Claude Voice off and lost its settings:
+  Supervisor drops options the schema no longer lists, and 1.4.1 had
+  removed the flat `claude_voice_*` options from it. They are back in the
+  schema, and set server + token from 1.4.0 count as switched on, as they
+  did there. Settings already lost in an update to 1.4.1 have to be
+  entered again in the Claude Voice group.
+
 ## 1.4.1
 
 - The Claude Voice settings are now one collapsed group with a

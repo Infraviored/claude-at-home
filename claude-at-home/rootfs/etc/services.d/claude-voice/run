@@ -32,6 +32,15 @@ TOKEN="$(cfg token claude_voice_token)"
 NAME="$(cfg name claude_voice_name)"
 [ -n "${NAME}" ] || NAME="homeassistant"
 
+# 1.4.0 had no on switch: server + token set meant on. Keep that for
+# settings carried over from it, or the update silently turns it off.
+LEGACY_SERVER="$(bashio::config 'claude_voice_server' '')"
+LEGACY_TOKEN="$(bashio::config 'claude_voice_token' '')"
+if [ -n "${LEGACY_SERVER}" ] && [ "${LEGACY_SERVER}" != "null" ] \
+        && [ -n "${LEGACY_TOKEN}" ] && [ "${LEGACY_TOKEN}" != "null" ]; then
+    ENABLED=true
+fi
+
 if [ "${ENABLED}" != "true" ] || [ -z "${SERVER}" ] || [ -z "${TOKEN}" ]; then
     bashio::log.info "Claude Voice is off."
     exec sleep infinity

@@ -46,3 +46,12 @@ configuration:
       name:
         name: Machine name
         description: The name this machine has on the dashboard; must match the token.
+  claude_voice_server:
+    name: Claude Voice address (1.4.0)
+    description: Old setting, still read. Use the Claude Voice group instead.
+  claude_voice_token:
+    name: Claude Voice token (1.4.0)
+    description: Old setting, still read. Use the Claude Voice group instead.
+  claude_voice_name:
+    name: Claude Voice machine name (1.4.0)
+    description: Old setting, still read. Use the Claude Voice group instead.
