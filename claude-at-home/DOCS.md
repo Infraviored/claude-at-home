@@ -45,7 +45,10 @@ claude_voice:
   name: homeassistant
 ```
 
-Changing any of these takes effect when the app restarts.
+Changing `permission_mode`, `remote_control` or `session_name` takes effect
+automatically without restarting the app: the main session is restarted with
+the new settings while preserving its conversation. Other options take effect
+when the app restarts.
 
 ### Option: `session_name`
 

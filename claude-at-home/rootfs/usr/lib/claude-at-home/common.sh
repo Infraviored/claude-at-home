@@ -21,7 +21,13 @@ readonly BYPASS_PENDING=/data/claude-at-home-bypass-pending
 
 session_name() {
     local s
-    s="$(bashio::config 'session_name' 'claude-at-home')"
+    if declare -F bashio::config >/dev/null 2>&1; then
+        s="$(bashio::config 'session_name' 'claude-at-home')"
+    elif [ -s /data/options.json ]; then
+        s="$(jq -r '.session_name // "claude-at-home"' /data/options.json 2>/dev/null)"
+    else
+        s="claude-at-home"
+    fi
     [ -n "${s}" ] && [ "${s}" != "null" ] || s="claude-at-home"
     printf '%s' "${s}"
 }
@@ -42,7 +48,13 @@ workdir() {
 # smart home.
 permission_mode() {
     local mode
-    mode="$(bashio::config 'permission_mode' 'auto')"
+    if declare -F bashio::config >/dev/null 2>&1; then
+        mode="$(bashio::config 'permission_mode' 'auto')"
+    elif [ -s /data/options.json ]; then
+        mode="$(jq -r '.permission_mode // "auto"' /data/options.json 2>/dev/null)"
+    else
+        mode="auto"
+    fi
     case "${mode}" in
         "auto"|""|"null")     printf 'auto' ;;
         "bypass permissions") printf 'bypassPermissions' ;;
@@ -51,7 +63,9 @@ permission_mode() {
         "manual")             printf 'manual' ;;
         "never ask")          printf 'dontAsk' ;;
         *)
-            bashio::log.warning "Unknown permission_mode '${mode}' — falling back to auto."
+            if declare -F bashio::log.warning >/dev/null 2>&1; then
+                bashio::log.warning "Unknown permission_mode '${mode}' — falling back to auto."
+            fi
             printf 'auto'
             ;;
     esac

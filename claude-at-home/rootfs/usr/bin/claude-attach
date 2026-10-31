@@ -18,7 +18,7 @@ running() {  # short
 # Bypass permissions chosen but its disclaimer never accepted: only an
 # interactive claude shows it (claude-main runs the session in auto mode
 # meanwhile, and restarts it once this is done).
-if [ -e "${BYPASS_PENDING}" ] && ! bypass_accepted; then
+if { [ -e "${BYPASS_PENDING}" ] || [ "$(permission_mode)" = "bypassPermissions" ]; } && ! bypass_accepted; then
     printf '%s\r\n' \
         "'bypass permissions' is chosen in the options. Claude Code asks you to" \
         "accept its disclaimer for that once. It opens now; after accepting," \
@@ -29,7 +29,10 @@ if [ -e "${BYPASS_PENDING}" ] && ! bypass_accepted; then
     # After the disclaimer is accepted, trigger claude-main's restart immediately
     # and wait until the session is running with the new flags before attaching.
     if bypass_accepted; then
-        pkill -f "sleep 15" 2>/dev/null || true
+        touch /run/claude-main.wake
+        if [ -s /run/claude-main.pid ]; then
+            kill -USR1 "$(< /run/claude-main.pid)" 2>/dev/null || true
+        fi
         for _ in $(seq 1 30); do
             if [ ! -e "${BYPASS_PENDING}" ] \
                 && jq -e '.flags // [] | contains(["--dangerously-skip-permissions"])' "${MAIN_STATE}" >/dev/null 2>&1 \

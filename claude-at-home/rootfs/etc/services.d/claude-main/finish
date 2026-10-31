@@ -3,4 +3,5 @@
 # Always let s6 restart the watcher of the main session; never halt the
 # container over it.
 # ==============================================================================
+rm -f /run/claude-main.pid /run/claude-main.wake
 bashio::log.info "Main session watcher exited (${1}) — restarting."
