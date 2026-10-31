@@ -1,7 +1,7 @@
 #!/usr/bin/with-contenv bashio
 # Surfaces Claude's sign-in link as a Home Assistant notification.
 #
-# When the session logs out, Claude prints an OAuth URL into the terminal
+# When the session logs out, `/login` prints an OAuth URL into the terminal
 # and waits for the code. That URL is unusable on a phone: the Home
 # Assistant app's web view will not let you select text, so the link can be
 # read but never copied. This watches the terminal for such a URL and posts
@@ -9,18 +9,18 @@
 # link. Pasting the code back into the terminal works fine, so only the
 # outbound half needs help.
 set -u
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
 
-readonly SOCK=/data/tmux.sock
 readonly INTERVAL=10
+# Written when a sign-in succeeds.
+readonly CREDENTIALS=/data/.claude/.credentials.json
 readonly NOTIFICATION_ID=claude_at_home_login
 # Notifications do not survive a Home Assistant restart. Without a periodic
 # re-post, one that vanishes while the prompt is still up is never seen
 # again - the prompt does not change, so nothing would trigger a new post.
 readonly REPOST_EVERY=30
 readonly API="http://supervisor/core/api/services/persistent_notification"
-
-SESSION="$(bashio::config 'session_name' 'claude-at-home')"
-[ -n "${SESSION}" ] && [ "${SESSION}" != "null" ] || SESSION="claude-at-home"
 
 if ! bashio::config.true 'login_notification'; then
     bashio::log.info "Sign-in notifications are turned off."
@@ -34,27 +34,43 @@ call() {  # service, payload
         -d "$2" "${API}/$1"
 }
 
-# The terminal hard-wraps the URL across several lines with no wrap marker,
-# so the lines have to be glued back together. Everything from the match to
-# the end of the pane is joined, then the URL is read off it. The match is
+# The session is a background job; `claude logs` gives its recent terminal
+# output, escape sequences and all. The terminal hard-wraps the URL across
+# several lines with no wrap marker, so the escapes are dropped and the lines
+# glued back together, then the newest URL is read off it. The match is
 # bounded to characters that can legally appear in the query string: after
 # joining, "up to the first space" would happily run on through a box-drawing
 # character or the next line's first word, and the sanity check below cannot
 # see the difference because it only tests for substrings.
 current_url() {
-    tmux -S "${SOCK}" capture-pane -p -t "${SESSION}" 2>/dev/null \
-        | sed -n '/oauth\/authorize/,$p' \
-        | tr -d '\n' \
+    local short
+    short="$(main_short)"
+    [ -n "${short}" ] || return 0
+    claude logs "${short}" 2>/dev/null \
+        | sed $'s/\x1b\\[[0-9;?]*[A-Za-z]//g; s/\x1b[()][A-Za-z0-9]//g' \
+        | tr -d '\r\n' \
         | grep -oE 'https://claude\.com/[a-z/]*oauth/authorize\?[A-Za-z0-9._~%&=+-]*' \
-        | head -1
+        | tail -1
+}
+
+# Unlike a screen, recent output still holds the link for a while after the
+# sign-in. Signed in since it was posted: that link is done.
+signed_in_since() {  # epoch seconds
+    [ -s "${CREDENTIALS}" ] && [ "$(stat -c %Y "${CREDENTIALS}")" -ge "$1" ]
 }
 
 bashio::log.info "Watching for sign-in prompts."
 notified=""
+notified_at=0
+done_url=""
 cycle=0
 
 while true; do
     url="$(current_url || true)"
+    if [ -n "${notified}" ] && signed_in_since "${notified_at}"; then
+        done_url="${notified}"
+    fi
+    [ -n "${url}" ] && [ "${url}" = "${done_url}" ] && url=""
     repost=false
     [ $(( cycle % REPOST_EVERY )) -eq 0 ] && repost=true
     cycle=$(( cycle + 1 ))
@@ -68,8 +84,10 @@ while true; do
                   title: "Claude at Home needs you to sign in",
                   message: ("[Open the Claude sign-in page](" + $url + ")\n\nSign in, then paste the code it gives you into the Claude at Home terminal.")}')"
             if [ "$(call create "${payload}")" = "200" ]; then
-                [ "${url}" != "${notified}" ] \
-                    && bashio::log.info "Sign-in link posted as a notification."
+                if [ "${url}" != "${notified}" ]; then
+                    bashio::log.info "Sign-in link posted as a notification."
+                    notified_at="$(date +%s)"
+                fi
                 notified="${url}"
             else
                 bashio::log.warning "Could not post the sign-in notification."

@@ -3,8 +3,9 @@ ARG BUILD_FROM=ghcr.io/home-assistant/base:3.23
 FROM ${BUILD_FROM}
 
 # Runtime deps:
-#   tmux      - holds the persistent Claude session
-#   ttyd      - serves that tmux session as the ingress web terminal
+#   ttyd      - serves the Claude session (`claude attach`) as the ingress
+#               web terminal; the session itself is a background job of the
+#               Claude daemon
 #   git       - HA configs are usually git-tracked, and Claude works on them
 #   openssh-client - so git can push over SSH (keys live in /data/.ssh)
 #   python3   - HA configs contain Python (pyscript, AppDaemon, helpers)
@@ -15,7 +16,6 @@ FROM ${BUILD_FROM}
 #   libstdc++ / gcompat - the Claude Code native build is glibc-linked
 #   nodejs    - runs the Claude Voice daemon, only when that is configured
 RUN apk add --no-cache \
-        tmux \
         ttyd \
         git \
         openssh-client \
@@ -49,6 +49,7 @@ COPY rootfs /
 
 RUN chmod +x \
         /usr/bin/claude-usage.sh \
+        /usr/bin/claude-attach \
         /etc/cont-init.d/*.sh \
         /etc/services.d/*/run \
         /etc/services.d/*/finish

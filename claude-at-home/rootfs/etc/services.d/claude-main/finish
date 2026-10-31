@@ -1,0 +1,6 @@
+#!/usr/bin/env bashio
+# ==============================================================================
+# Always let s6 restart the watcher of the main session; never halt the
+# container over it.
+# ==============================================================================
+bashio::log.info "Main session watcher exited (${1}) — restarting."

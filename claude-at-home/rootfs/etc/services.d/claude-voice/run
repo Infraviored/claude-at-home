@@ -67,14 +67,17 @@ else
     bashio::log.warning "Could not refresh the Claude Voice daemon; using the copy from last time."
 fi
 
-# Same home and tmux socket as the Claude session, so the daemon sees its
-# history (/data/.claude) and can type into its pane.
-export HOME=/data
-export PATH="/data/.local/bin:${PATH}"
+# Same home as the Claude session (common.sh), so the dashboard's daemon sees
+# its history (/data/.claude) and reaches the Claude daemon that runs it.
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
 export CLAUDE_VOICE_SERVER="${SERVER}"
 export CLAUDE_VOICE_TOKEN="${TOKEN}"
 export CLAUDE_VOICE_NAME="${NAME}"
-export CLAUDE_VOICE_TMUX_SOCKET=/data/tmux.sock
+# Sessions the dashboard starts here: in the work folder (which is not under
+# HOME, so it is named), with the permission mode the options say.
+export CLAUDE_VOICE_DIR_ROOTS="$(workdir)"
+export CLAUDE_VOICE_PERMISSION_MODE="$(permission_mode)"
 
 bashio::log.info "Connecting to Claude Voice at ${SERVER} as '${NAME}'..."
 exec node "${BUNDLE}"

@@ -1,6 +1,7 @@
 #!/usr/bin/with-contenv bashio
 # ==============================================================================
-# Web terminal attached to the persistent Claude session.
+# Web terminal attached to the main Claude session (claude-attach, which
+# waits for it and attaches again after leaving it).
 #
 # Binds inside the container only. This add-on does not use host
 # networking and publishes no ports, so the container's only interface is
@@ -12,20 +13,6 @@
 # ingress can never reach ttyd.
 # ==============================================================================
 set -u
-
-readonly SOCK=/data/tmux.sock
-
-SESSION="$(bashio::config 'session_name' 'claude-at-home')"
-[ -n "${SESSION}" ] && [ "${SESSION}" != "null" ] || SESSION="claude-at-home"
-
-# attach-session (not `new -A`): if the claude service hasn't created the
-# session yet, fail loudly rather than silently serving an empty shell.
-# s6 restarts this within seconds, by which time the session exists.
-if ! tmux -S "${SOCK}" has-session -t "${SESSION}" 2>/dev/null; then
-    bashio::log.info "Waiting for tmux session '${SESSION}'..."
-    sleep 3
-    exit 1
-fi
 
 # bashio renamed its add-on helpers to `app` when HA renamed the concept;
 # which name exists depends on the base image's bashio version.
@@ -39,4 +26,4 @@ bashio::log.info "Starting web terminal on ingress port ${INGRESS_PORT}..."
 exec ttyd \
     -p "${INGRESS_PORT}" \
     --writable \
-    tmux -u -S "${SOCK}" attach-session -t "${SESSION}"
+    /usr/bin/claude-attach

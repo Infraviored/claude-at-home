@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# What the web terminal runs: the main Claude session, attached.
+#
+# Waits while the session is not up yet (first boot, a respawn), and after
+# leaving it -- ← opens the agent view, Ctrl+Z drops out -- offers to attach
+# again instead of leaving a dead terminal.
+# ==============================================================================
+set -u
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
+
+running() {  # short
+    claude agents --json 2>/dev/null \
+        | jq -e --arg s "$1" 'any(.[]; .id == $s and .pid != null)' >/dev/null 2>&1
+}
+
+# Bypass permissions chosen but its disclaimer never accepted: only an
+# interactive claude shows it (claude-main runs the session in auto mode
+# meanwhile, and restarts it once this is done).
+if [ -e "${BYPASS_PENDING}" ] && ! bypass_accepted; then
+    printf '%s\r\n' \
+        "'bypass permissions' is chosen in the options. Claude Code asks you to" \
+        "accept its disclaimer for that once. It opens now; after accepting," \
+        "leave it with /exit and the main session restarts in that mode." \
+        "Press Enter to continue."
+    read -r _ || exit 0
+    (cd "$(workdir)" && claude --dangerously-skip-permissions)
+fi
+
+waited=0
+while true; do
+    short="$(main_short || true)"
+    if [ -n "${short}" ] && running "${short}"; then
+        waited=0
+        claude attach "${short}"
+        printf '\r\nDetached from the Claude session. Press Enter to attach again.\r\n'
+        read -r _ || exit 0
+    else
+        [ "${waited}" = 0 ] && printf 'Waiting for the Claude session to start...\r\n'
+        waited=1
+        sleep 2
+    fi
+done
