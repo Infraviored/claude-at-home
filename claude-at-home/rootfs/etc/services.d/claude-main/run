@@ -1,0 +1,221 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Keeps the main Claude session up: a background job of the daemon (the
+# claude service), named after the session_name option.
+#
+#   - running: nothing to do
+#   - known to the daemon but ended (crash, restart, /exit): respawned, same
+#     conversation and flags
+#   - the options changed since it started: stopped, taken out of the daemon
+#     and resumed with the new flags; the conversation stays
+#   - unknown: resumed from the newest conversation of the work folder --
+#     which is how the tmux session of 1.4 and before continues -- or new
+#
+# Checked again every few seconds, so a session that ends comes back, as the
+# tmux session used to.
+# ==============================================================================
+set -u
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
+
+readonly INTERVAL=15
+readonly PID_FILE=/run/claude-main.pid
+readonly WAKE_FLAG=/run/claude-main.wake
+readonly RESPAWN_WINDOW=120
+
+echo "$$" > "${PID_FILE}"
+woken=0
+trap 'woken=1' USR1
+
+respawn_count=0
+last_respawn_short=""
+last_respawn_time=0
+
+SESSION=""
+WORKDIR=""
+MODE=""
+RC=false
+
+# The flags the options ask for, in a fixed order, so a change shows; WANT is
+# the same as JSON. Bypass not accepted yet: auto, until it is (common.sh).
+set_flags() {
+    rm -f "${BYPASS_PENDING}"
+    if [ "${MODE}" = bypassPermissions ] && bypass_accepted; then
+        FLAGS=(--dangerously-skip-permissions)
+    elif [ "${MODE}" = bypassPermissions ]; then
+        FLAGS=(--permission-mode auto)
+        touch "${BYPASS_PENDING}"
+        if [ "${warned:-}" != 1 ]; then
+            bashio::log.warning "Bypass permissions needs Claude Code's disclaimer accepted once: open the web terminal. Running in auto mode until then."
+            warned=1
+        fi
+    else
+        FLAGS=(--permission-mode "${MODE}")
+    fi
+    # Remote Control lets you drive this session from the Claude apps.
+    [ "${RC}" = true ] && FLAGS+=(--remote-control "${SESSION}")
+    WANT="$(printf '%s\n' "${SESSION}" "${FLAGS[@]}" | jq -Rsc 'split("\n")[:-1]')"
+}
+
+# A background session does not ask whether to trust its folder, it refuses
+# one never trusted. In a terminal this was a question answered once; here
+# the folder is the one this app exists to work in. Recorded the way Claude
+# Code does, in one rename.
+trust_workdir() {
+    local f=/data/.claude.json tmp
+    [ -s "${f}" ] || echo '{}' > "${f}"
+    jq -e --arg d "${WORKDIR}" '.projects[$d].hasTrustDialogAccepted == true' "${f}" >/dev/null 2>&1 \
+        && return 0
+    tmp="$(mktemp "${f}.XXXXXX")"
+    if jq --arg d "${WORKDIR}" \
+            '.projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true})' \
+            "${f}" > "${tmp}" && [ -s "${tmp}" ]; then
+        chmod 600 "${tmp}"
+        mv "${tmp}" "${f}"
+    else
+        rm -f "${tmp}"
+    fi
+}
+
+# The newest conversation of the work folder: Claude files them under
+# projects/<the path, every other character a dash>.
+latest_session() {
+    local dir
+    dir="/data/.claude/projects/$(printf '%s' "${WORKDIR}" | sed 's/[^A-Za-z0-9]/-/g')"
+    # shellcheck disable=SC2012
+    ls -t "${dir}"/*.jsonl 2>/dev/null | head -1 | xargs -r basename | sed 's/\.jsonl$//' \
+        | grep -E '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || true
+}
+
+# Starts the main session as a new job: continuing $1 if given.
+start_main() {
+    local resume="$1" out short sid="" i
+    local args=(--bg --name "${SESSION}" "${FLAGS[@]}")
+    [ -n "${resume}" ] && args+=(--resume "${resume}")
+    trust_workdir
+    if [ -n "${resume}" ]; then
+        bashio::log.info "Continuing conversation ${resume:0:8} as '${SESSION}' in ${WORKDIR}..."
+    else
+        bashio::log.info "No prior conversation — starting a fresh session '${SESSION}' in ${WORKDIR}."
+    fi
+    out="$(cd "${WORKDIR}" && claude "${args[@]}" </dev/null 2>&1)" || true
+    short="$(printf '%s' "${out}" | grep -oE 'backgrounded[^0-9a-f]*[0-9a-f]{8}' \
+        | grep -oE '[0-9a-f]{8}$' | head -1)" || true
+    if [ -z "${short}" ]; then
+        bashio::log.warning "Could not start the session: $(printf '%s' "${out}" | tail -3)"
+        if [ -n "${resume}" ]; then
+            bashio::log.warning "Resuming conversation ${resume:0:8} failed — falling back to a fresh session."
+            start_main ""
+            return $?
+        fi
+        return 1
+    fi
+    # The daemon chooses the id of a new conversation; read back once listed.
+    for i in $(seq 1 20); do
+        sid="$(claude agents --json 2>/dev/null \
+            | jq -r --arg s "${short}" 'map(select(.id == $s)) | .[0].sessionId // empty')" || true
+        [ -n "${sid}" ] && break
+        sleep 1
+    done
+    jq -n --arg short "${short}" --arg sid "${sid:-${resume}}" --argjson flags "${WANT}" \
+        '{short: $short, sessionId: $sid, flags: $flags}' > "${MAIN_STATE}.tmp" \
+        && mv "${MAIN_STATE}.tmp" "${MAIN_STATE}"
+    bashio::log.info "Session '${SESSION}' runs as ${short}."
+}
+
+ensure_main() {
+    local all short job sid had now
+    SESSION="$(session_name)"
+    WORKDIR="$(workdir)"
+    MODE="$(permission_mode)"
+    RC=false
+    bashio::config.true 'remote_control' && RC=true
+
+    set_flags
+    # Not knowing what the daemon has is not "it has nothing": starting then
+    # would make a second session on the same conversation.
+    all="$(claude agents --json --all 2>/dev/null)" || {
+        bashio::log.warning "Could not ask the Claude daemon for its sessions."
+        return 1
+    }
+    jq -e 'type == "array"' <<<"${all}" >/dev/null 2>&1 || {
+        bashio::log.warning "Claude daemon returned an invalid session list."
+        return 1
+    }
+    short="$(main_short)"
+    job=""
+    [ -n "${short}" ] && job="$(jq -c --arg s "${short}" 'map(select(.id == $s)) | .[0] // empty' <<<"${all}")"
+    if [ -n "${job}" ]; then
+        had="$(jq -c '.flags // []' "${MAIN_STATE}")"
+        if [ "${had}" = "${WANT}" ]; then
+            if claude agents --json 2>/dev/null \
+                | jq -e --arg s "${short}" 'any(.[]; .id == $s and .pid != null)' >/dev/null; then
+                respawn_count=0
+                return 0
+            fi
+
+            now="$(date +%s)"
+            if [ "${last_respawn_short}" = "${short}" ] && [ $(( now - last_respawn_time )) -le "${RESPAWN_WINDOW}" ]; then
+                respawn_count=$(( respawn_count + 1 ))
+            else
+                respawn_count=1
+                last_respawn_short="${short}"
+            fi
+            last_respawn_time="${now}"
+
+            if [ "${respawn_count}" -gt 3 ]; then
+                bashio::log.warning "Session '${SESSION}' (${short}) failed to stay running after 3 respawns — removing dead job and starting a fresh session."
+                claude rm "${short}" >/dev/null 2>&1 || true
+                rm -f "${MAIN_STATE}"
+                respawn_count=0
+                last_respawn_short=""
+                start_main ""
+                return
+            fi
+
+            bashio::log.info "Session '${SESSION}' (${short}) is not running — respawning it (attempt ${respawn_count}/3)."
+            if ! claude respawn "${short}" >/dev/null 2>&1; then
+                bashio::log.warning "claude respawn ${short} failed — removing dead job and restarting."
+                claude rm "${short}" >/dev/null 2>&1 || true
+                sid="$(jq -r '.sessionId // empty' <<<"${job}")"
+                rm -f "${MAIN_STATE}"
+                respawn_count=0
+                last_respawn_short=""
+                [ -n "${sid}" ] || sid="$(latest_session)"
+                start_main "${sid}"
+                return
+            fi
+            return 0
+        fi
+        bashio::log.info "Options changed — restarting '${SESSION}' with the new ones."
+        sid="$(jq -r '.sessionId // empty' <<<"${job}")"
+        claude stop "${short}" >/dev/null 2>&1 || true
+        claude rm "${short}" >/dev/null 2>&1 || true
+        respawn_count=0
+        last_respawn_short=""
+        start_main "${sid}"
+        return
+    fi
+    # Not in the daemon: the first start after the update from tmux, or a
+    # daemon that lost its jobs. The conversation it had, else the newest.
+    sid=""
+    [ -s "${MAIN_STATE}" ] && sid="$(jq -r '.sessionId // empty' "${MAIN_STATE}")"
+    [ -n "${sid}" ] || sid="$(latest_session)"
+    start_main "${sid}"
+}
+
+# The daemon is the claude service; wait for it to answer.
+for _ in $(seq 1 30); do
+    claude daemon status >/dev/null 2>&1 && break
+    sleep 1
+done
+
+while true; do
+    rm -f "${WAKE_FLAG}"
+    woken=0
+    ensure_main || true
+    if [ "${woken}" = 0 ] && [ ! -f "${WAKE_FLAG}" ]; then
+        sleep "${INTERVAL}" &
+        wait $! 2>/dev/null || true
+    fi
+done

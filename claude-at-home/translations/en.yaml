@@ -2,8 +2,8 @@ configuration:
   session_name:
     name: Session name
     description: >-
-      Name of the tmux session holding Claude, and the name it registers for
-      Remote Control. Change only if it clashes with something else.
+      Name of the Claude session, and the name it registers for Remote
+      Control. Change only if it clashes with something else.
   permission_mode:
     name: Permission mode
     description: >-

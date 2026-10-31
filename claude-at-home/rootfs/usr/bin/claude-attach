@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# What the web terminal runs: the main Claude session, attached.
+#
+# Waits while the session is not up yet (first boot, a respawn), and after
+# leaving it -- ← opens the agent view, Ctrl+Z drops out -- offers to attach
+# again instead of leaving a dead terminal.
+# ==============================================================================
+set -u
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
+
+running() {  # short
+    claude agents --json 2>/dev/null \
+        | jq -e --arg s "$1" 'any(.[]; .id == $s and .pid != null)' >/dev/null 2>&1
+}
+
+# Bypass permissions chosen but its disclaimer never accepted: only an
+# interactive claude shows it (claude-main runs the session in auto mode
+# meanwhile, and restarts it once this is done).
+if { [ -e "${BYPASS_PENDING}" ] || [ "$(permission_mode)" = "bypassPermissions" ]; } && ! bypass_accepted; then
+    printf '%s\r\n' \
+        "'bypass permissions' is chosen in the options. Claude Code asks you to" \
+        "accept its disclaimer for that once. It opens now; after accepting," \
+        "leave it with /exit and the main session restarts in that mode." \
+        "Press Enter to continue."
+    read -r _ || exit 0
+    (cd "$(workdir)" && claude --dangerously-skip-permissions)
+    # After the disclaimer is accepted, trigger claude-main's restart immediately
+    # and wait until the session is running with the new flags before attaching.
+    if bypass_accepted; then
+        touch /run/claude-main.wake
+        if [ -s /run/claude-main.pid ]; then
+            kill -USR1 "$(< /run/claude-main.pid)" 2>/dev/null || true
+        fi
+        for _ in $(seq 1 30); do
+            if [ ! -e "${BYPASS_PENDING}" ] \
+                && jq -e '.flags // [] | contains(["--dangerously-skip-permissions"])' "${MAIN_STATE}" >/dev/null 2>&1 \
+                && running "$(main_short || true)"; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+fi
+
+waited=0
+while true; do
+    short="$(main_short || true)"
+    if [ -n "${short}" ] && running "${short}"; then
+        waited=0
+        claude attach "${short}"
+        printf '\r\nDetached from the Claude session. Press Enter to attach again.\r\n'
+        read -r _ || exit 0
+    else
+        [ "${waited}" = 0 ] && printf 'Waiting for the Claude session to start...\r\n'
+        waited=1
+        sleep 2
+    fi
+done

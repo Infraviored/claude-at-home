@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.0
+
+- Claude now runs as a Claude Code background session (`claude --bg`),
+  kept by the Claude daemon, instead of in tmux. The web terminal attaches
+  to it with `claude attach`, waits for it while it starts, and offers to
+  attach again after you leave it. tmux is no longer in the image.
+- Updating keeps your conversation: on the first start the newest
+  conversation of the config folder is continued as the background session.
+- With Claude Voice switched on, the dashboard can start further sessions
+  here (in the config folder, with your permission mode; e.g. a cheap Haiku
+  session) and stop them.
+- Changing `permission_mode`, `remote_control` or `session_name` restarts
+  the session with the new settings; the conversation stays.
+- The config folder is recorded as trusted for Claude, which a background
+  session needs: it cannot ask, as the terminal did on first start.
+- *bypass permissions*: Claude Code requires its disclaimer accepted once
+  before a background session may skip permissions. Until then the session
+  runs in *auto*, and the web terminal opens the disclaimer.
+- First start shows *Not logged in*: type `/login`. The sign-in link is
+  still posted as a notification; it is now read from `claude logs`.
+
 ## 1.4.2
 
 - Updating from 1.4.0 turned Claude Voice off and lost its settings:

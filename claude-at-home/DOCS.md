@@ -12,10 +12,10 @@ an entity, or clean up YAML — in place, on the running system.
    **Show in sidebar** on the app's Info page — Home Assistant resets that
    switch whenever an app is installed or updated. The **Open Web UI**
    button on that page always works too.
-3. On first start you'll be dropped into Claude's login flow. It prints a
-   URL — open it in a browser, sign in, and paste the code back into the
-   terminal. That's the only manual step, and only once: credentials live
-   in the app's persistent storage from then on.
+3. On first start the session says *Not logged in*. Type `/login`: it
+   prints a URL — open it in a browser, sign in, and paste the code back
+   into the terminal. That's the only manual step, and only once:
+   credentials live in the app's persistent storage from then on.
 4. Talk to Claude. The session stays alive in the background whether or not
    the browser tab is open.
 
@@ -27,7 +27,8 @@ Home Assistant reboots. After the first login you should never have to log
 in again.
 
 If the session ever dies, it is restarted automatically and resumed with
-its prior conversation.
+its prior conversation. Updating from 1.4 or earlier, where the session ran
+in tmux, continues the conversation you had there.
 
 ## Configuration
 
@@ -44,12 +45,16 @@ claude_voice:
   name: homeassistant
 ```
 
-Changing any of these takes effect when the app restarts.
+Changing `permission_mode`, `remote_control` or `session_name` takes effect
+automatically without restarting the app: the main session is restarted with
+the new settings while preserving its conversation. Other options take effect
+when the app restarts.
 
 ### Option: `session_name`
 
-Name of the tmux session holding Claude, and the name it registers for
-Remote Control. Change only if it clashes with something else.
+Name of the Claude session (a background session of Claude Code), and the
+name it registers for Remote Control. Change only if it clashes with
+something else.
 
 ### Option: `permission_mode`
 
@@ -66,6 +71,11 @@ How Claude handles actions that would normally need your approval:
 - **plan** — works out what it would do, without making changes.
 - **manual** — asks before anything consequential.
 - **never ask** — never prompts.
+
+*bypass permissions* needs Claude Code's own disclaimer accepted once. The
+web terminal opens it for you (after Claude's first-run setup); until it is
+accepted the session runs in *auto* mode, and afterwards it restarts in
+*bypass permissions* by itself.
 
 *auto* and *bypass permissions* are the two that keep working with nobody
 watching. The others stop and wait for an answer at some point, so someone
@@ -140,6 +150,11 @@ The dashboard's small connection daemon is not part of this app: it is
 downloaded from the dashboard on every start, with the token, into
 `/data/claude-voice-agent.mjs`. It only connects outwards; this app still
 publishes no ports.
+
+From the dashboard you can also start more sessions here — for example a
+cheap Haiku session for a quick job — and stop them again. They run in the
+Home Assistant configuration folder with the permission mode set above,
+beside the main session, and show up as tabs like it.
 
 ## Access and permissions
 
@@ -227,9 +242,13 @@ Claude actually needs to reach.
 **The sidebar entry is missing.** Turn on *Show in sidebar* on the app's
 Info page. Home Assistant resets that switch on every install and update.
 
-**"The app is starting, this can take some time…" never goes away.** Check
-the app's log. The terminal is only served once the Claude session exists;
-if the session is failing to start you will see why there.
+**The terminal says "Waiting for the Claude session to start…" and nothing
+follows.** Check the app's log: if the session is failing to start you will
+see why there.
+
+**I left the session and the terminal says "Detached".** ← opens Claude's
+agent view and Ctrl+Z leaves the session; it keeps running either way.
+Press Enter to attach again.
 
 **It asks me to log in again.** Credentials live in the app's persistent
 storage, so this should only ever happen once. If it recurs, something is
@@ -245,27 +264,34 @@ except changes Claude makes on purpose.
 
 ## Under the hood
 
-The Claude CLI runs inside a tmux session, which is supervised by s6: if
-Claude exits for any reason, the session is rebuilt and resumed with
-`--continue`. A second supervised service runs `ttyd`, which attaches to
-that same tmux session and serves it over ingress. Because both are
-supervised independently, either can crash and recover without the other
-noticing.
+The Claude daemon (`claude daemon run`) runs in the foreground under s6
+and holds the session as a Claude Code background session (`claude --bg`).
+A second service keeps that session up: it starts it on first boot —
+continuing the newest conversation of the config folder, which is how a
+tmux session from 1.4 and earlier carries over — respawns it if it ends,
+and restarts it with new flags when the options change; the conversation
+stays each time. Its job id is kept in `/data/claude-at-home-main.json`.
+A third supervised service runs `ttyd`, which serves `claude attach` to
+that session over ingress and waits for it while it is not up yet. Because
+all are supervised independently, each can crash and recover without the
+others noticing.
 
-A fourth service watches the terminal for a sign-in prompt. It reads the
-pane with `tmux capture-pane`, glues the hard-wrapped URL back together and
-posts it through the same Core API proxy.
+A fourth service watches the session for a sign-in prompt. It reads the
+session's recent output with `claude logs`, glues the hard-wrapped URL back
+together and posts it through the same Core API proxy; it dismisses the
+notification once the sign-in has written new credentials.
 
-Usage numbers are fetched by a third supervised service. It reads the OAuth
+Usage numbers are fetched by a fifth supervised service. It reads the OAuth
 token from the app's own storage — Home Assistant Core runs in a separate
 container and cannot see that file, which is why this cannot be a native
 Home Assistant sensor — and pushes only the derived percentages through the
 Supervisor's Core API proxy, authenticated with the app's own token. The
 token itself never leaves the app.
 
-When configured, a fifth service runs the Claude Voice daemon with the same
-home directory and tmux socket as the Claude session, so the dashboard sees
-its history and can type into its pane.
+When configured, one more service runs the Claude Voice daemon with the
+same home directory as the Claude session, so the dashboard sees its
+history and talks to it through the Claude daemon — and can start and stop
+further background sessions there.
 
 The bundled skills live in the image at `/opt/ha-skills`, and a startup
 task links them into the persistent volume. Linking rather than copying is

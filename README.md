@@ -44,7 +44,8 @@ That's it. [Full documentation →](claude-at-home/DOCS.md)
 
 ## Why it's not just a terminal
 
-**It stays.** The session runs in tmux under s6 supervision. Close the
+**It stays.** The session runs as a Claude Code background session, kept by
+the Claude daemon under s6 supervision. Close the
 tab, restart the app, reboot the machine — it comes back, still logged
 in, still holding the conversation you were having.
 
@@ -96,7 +97,7 @@ Five options, all optional:
 |---|---|---|
 | `permission_mode` | `auto` | `auto`, `bypass permissions`, `accept edits`, `plan`, `manual`, `never ask` |
 | `remote_control` | `true` | Drive the session from the Claude apps and claude.ai as well as the terminal |
-| `session_name` | `claude-at-home` | Name of the tmux session and the Remote Control target |
+| `session_name` | `claude-at-home` | Name of the Claude session and the Remote Control target |
 | `login_notification` | `true` | Post Claude's sign-in link as a notification, so it is tappable on a phone |
 | `usage_sensors` | `false` | Publish Claude plan usage as `sensor.claude_5h_usage` / `sensor.claude_7d_usage` |
 
