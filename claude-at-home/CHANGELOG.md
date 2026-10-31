@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.2
+
+- A session the Claude daemon puts to sleep (idle, or low memory) now stays
+  asleep until it is used: opening the web terminal wakes it, and so does a
+  message from the Claude Voice dashboard (the session is pinned there).
+  Before, it was restarted within seconds; on a machine short of memory that
+  became a loop of retire and restart every two minutes, during which Home
+  Assistant itself stalled.
+- The supervision asks the daemon once per check instead of twice, and the
+  sign-in watcher looks every 30 s instead of every 10 s.
+
 ## 1.5.1
 
 - When Claude Voice is enabled, the session can now receive a tool kit from

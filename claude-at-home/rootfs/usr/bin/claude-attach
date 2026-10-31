@@ -45,14 +45,24 @@ if { [ -e "${BYPASS_PENDING}" ] || [ "$(permission_mode)" = "bypassPermissions" 
 fi
 
 waited=0
+woke=""
 while true; do
     short="$(main_short || true)"
     if [ -n "${short}" ] && running "${short}"; then
         waited=0
+        woke=""
         claude attach "${short}"
         printf '\r\nDetached from the Claude session. Press Enter to attach again.\r\n'
         read -r _ || exit 0
     else
+        # Asleep (the daemon retires an idle session, sooner when memory is
+        # low, and claude-main leaves it so): opening the terminal wakes it.
+        if [ -n "${short}" ] && [ "${woke}" != "${short}" ]; then
+            printf 'Waking the Claude session...\r\n'
+            claude respawn "${short}" >/dev/null 2>&1 || true
+            woke="${short}"
+            waited=1
+        fi
         [ "${waited}" = 0 ] && printf 'Waiting for the Claude session to start...\r\n'
         waited=1
         sleep 2
