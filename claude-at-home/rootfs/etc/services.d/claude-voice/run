@@ -1,0 +1,163 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Optional: connects this session to a Claude Voice dashboard
+# (github.com/Infraviored/claude-code-voice), so it shows up there beside the
+# sessions on your other machines and can be read and answered from it.
+#
+# The dashboard's machine daemon is not part of this image. It is fetched from
+# the dashboard itself on every start, with this machine's token, so it always
+# matches the server it talks to and updating the dashboard never needs a new
+# version of this app. Nothing runs unless it is switched on and both server
+# and token are set.
+# ==============================================================================
+set -u
+
+readonly BUNDLE=/data/claude-voice-agent.mjs
+
+# Settings live in the collapsible "Claude Voice" group. 1.4.0 had them as
+# flat options; those are still read if present, so an update loses nothing.
+cfg() {  # new key, old key
+    local v
+    v="$(bashio::config "claude_voice.$1" '')"
+    if [ -z "${v}" ] || [ "${v}" = "null" ]; then
+        v="$(bashio::config "$2" '')"
+    fi
+    [ "${v}" = "null" ] && v=""
+    printf '%s' "${v}"
+}
+
+ENABLED="$(bashio::config 'claude_voice.enabled' 'false')"
+SERVER="$(cfg server claude_voice_server)"
+TOKEN="$(cfg token claude_voice_token)"
+NAME="$(cfg name claude_voice_name)"
+[ -n "${NAME}" ] || NAME="homeassistant"
+
+# 1.4.0 had no on switch: server + token set meant on. Keep that for
+# settings carried over from it, or the update silently turns it off.
+LEGACY_SERVER="$(bashio::config 'claude_voice_server' '')"
+LEGACY_TOKEN="$(bashio::config 'claude_voice_token' '')"
+if [ -n "${LEGACY_SERVER}" ] && [ "${LEGACY_SERVER}" != "null" ] \
+        && [ -n "${LEGACY_TOKEN}" ] && [ "${LEGACY_TOKEN}" != "null" ]; then
+    ENABLED=true
+fi
+
+if [ "${ENABLED}" != "true" ] || [ -z "${SERVER}" ] || [ -z "${TOKEN}" ]; then
+    bashio::log.info "Claude Voice is off."
+    exec sleep infinity
+fi
+
+SERVER="${SERVER%/}"
+case "${SERVER}" in
+    http://*|https://*) ;;
+    *) SERVER="https://${SERVER}" ;;
+esac
+
+# Fetch into a temp file and swap: a failed download keeps the last good copy,
+# so a dashboard that is briefly down does not take this connection with it.
+if curl -fsS -m 60 -H "Authorization: Bearer ${TOKEN}" \
+        "${SERVER}/api/agent/bundle?name=${NAME}" -o "${BUNDLE}.tmp"; then
+    mv -f "${BUNDLE}.tmp" "${BUNDLE}"
+else
+    rm -f "${BUNDLE}.tmp"
+    if [ ! -s "${BUNDLE}" ]; then
+        bashio::log.warning "Could not fetch the Claude Voice daemon from ${SERVER} (check server and token)."
+        sleep 60
+        exit 1
+    fi
+    bashio::log.warning "Could not refresh the Claude Voice daemon; using the copy from last time."
+fi
+
+# Same home as the Claude session (common.sh), so the dashboard's daemon sees
+# its history (/data/.claude) and reaches the Claude daemon that runs it.
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
+
+readonly ETAG_FILE=/data/claude-voice-kit.etag
+readonly KIT_PID_FILE=/run/claude-voice-kit.pid
+
+fetch_kit() {
+    local headers_tmp kit_tmp err_tmp http_code etag_arg=()
+    headers_tmp="$(mktemp /tmp/kit-headers.XXXXXX)"
+    kit_tmp="$(mktemp /tmp/kit-archive.XXXXXX)"
+    err_tmp="$(mktemp /tmp/kit-curl-err.XXXXXX)"
+
+    if [ -s "${ETAG_FILE}" ]; then
+        etag_arg=(-H "If-None-Match: $(cat "${ETAG_FILE}")")
+    fi
+
+    http_code="$(curl -sS -m 60 -D "${headers_tmp}" \
+        -H "Authorization: Bearer ${TOKEN}" \
+        ${etag_arg[@]+"${etag_arg[@]}"} \
+        "${SERVER}/api/agent/kit?name=${NAME}" -o "${kit_tmp}" -w "%{http_code}" 2>"${err_tmp}")" || http_code="000"
+
+    case "${http_code}" in
+        200)
+            local new_etag unpack_dir
+            new_etag="$(grep -i '^etag:' "${headers_tmp}" | head -1 | tr -d '\r\n' | sed -E 's/^[eE][tT][aA][gG]:[[:space:]]*//')"
+            unpack_dir="$(mktemp -d /tmp/kit-unpack.XXXXXX)"
+            if tar -xzf "${kit_tmp}" -C "${unpack_dir}" 2>/dev/null; then
+                if [ -f "${unpack_dir}/install.sh" ] && [ ! -L "${unpack_dir}/install.sh" ]; then
+                    chmod +x "${unpack_dir}/install.sh"
+                    if (cd "${unpack_dir}" && HOME=/data timeout 120 ./install.sh); then
+                        if [ -n "${new_etag}" ]; then
+                            printf '%s' "${new_etag}" > "${ETAG_FILE}"
+                        else
+                            rm -f "${ETAG_FILE}"
+                        fi
+                        bashio::log.info "Installed tools kit from ${SERVER}."
+                    else
+                        bashio::log.warning "Kit install.sh failed."
+                    fi
+                else
+                    bashio::log.warning "Kit archive missing install.sh."
+                fi
+            else
+                bashio::log.warning "Failed to unpack kit archive."
+            fi
+            rm -rf "${unpack_dir}"
+            ;;
+        304)
+            # Kit unchanged
+            ;;
+        404)
+            # No kit for this machine, silent
+            ;;
+        *)
+            local err_msg
+            err_msg="$(head -c 200 "${err_tmp}" 2>/dev/null)"
+            if [ -n "${err_msg}" ]; then
+                bashio::log.warning "Could not fetch kit from ${SERVER} (HTTP ${http_code}): ${err_msg}"
+            else
+                bashio::log.warning "Could not fetch kit from ${SERVER} (HTTP ${http_code})."
+            fi
+            ;;
+    esac
+    rm -f "${headers_tmp}" "${kit_tmp}" "${err_tmp}"
+}
+
+# Fetch kit on start: failures log a warning and never stop the daemon
+fetch_kit || true
+
+# Refresh kit hourly in the background
+if [ -f "${KIT_PID_FILE}" ]; then
+    kill -TERM "$(cat "${KIT_PID_FILE}" 2>/dev/null)" 2>/dev/null || true
+    rm -f "${KIT_PID_FILE}"
+fi
+(
+    while true; do
+        sleep 3600
+        fetch_kit || true
+    done
+) &
+echo "$!" > "${KIT_PID_FILE}"
+
+export CLAUDE_VOICE_SERVER="${SERVER}"
+export CLAUDE_VOICE_TOKEN="${TOKEN}"
+export CLAUDE_VOICE_NAME="${NAME}"
+# Sessions the dashboard starts here: in the work folder (which is not under
+# HOME, so it is named), with the permission mode the options say.
+export CLAUDE_VOICE_DIR_ROOTS="$(workdir)"
+export CLAUDE_VOICE_PERMISSION_MODE="$(permission_mode)"
+
+bashio::log.info "Connecting to Claude Voice at ${SERVER} as '${NAME}'..."
+exec node "${BUNDLE}"

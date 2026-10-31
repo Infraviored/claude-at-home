@@ -1,5 +1,140 @@
 # Changelog
 
+## 1.5.2
+
+- A session the Claude daemon puts to sleep (idle, or low memory) now stays
+  asleep until it is used: opening the web terminal wakes it, and so does a
+  message from the Claude Voice dashboard (the session is pinned there).
+  Before, it was restarted within seconds; on a machine short of memory that
+  became a loop of retire and restart every two minutes, during which Home
+  Assistant itself stalled.
+- The supervision asks the daemon once per check instead of twice, and the
+  sign-in watcher looks every 30 s instead of every 10 s.
+
+## 1.5.1
+
+- When Claude Voice is enabled, the session can now receive a tool kit from
+  the dashboard. It is fetched on start using the machine token and refreshed
+  hourly; without a kit on the dashboard nothing changes.
+
+## 1.5.0
+
+- Claude now runs as a Claude Code background session (`claude --bg`),
+  kept by the Claude daemon, instead of in tmux. The web terminal attaches
+  to it with `claude attach`, waits for it while it starts, and offers to
+  attach again after you leave it. tmux is no longer in the image.
+- Updating keeps your conversation: on the first start the newest
+  conversation of the config folder is continued as the background session.
+- With Claude Voice switched on, the dashboard can start further sessions
+  here (in the config folder, with your permission mode; e.g. a cheap Haiku
+  session) and stop them.
+- Changing `permission_mode`, `remote_control` or `session_name` restarts
+  the session with the new settings; the conversation stays.
+- The config folder is recorded as trusted for Claude, which a background
+  session needs: it cannot ask, as the terminal did on first start.
+- *bypass permissions*: Claude Code requires its disclaimer accepted once
+  before a background session may skip permissions. Until then the session
+  runs in *auto*, and the web terminal opens the disclaimer.
+- First start shows *Not logged in*: type `/login`. The sign-in link is
+  still posted as a notification; it is now read from `claude logs`.
+
+## 1.4.2
+
+- Updating from 1.4.0 turned Claude Voice off and lost its settings:
+  Supervisor drops options the schema no longer lists, and 1.4.1 had
+  removed the flat `claude_voice_*` options from it. They are back in the
+  schema, and set server + token from 1.4.0 count as switched on, as they
+  did there. Settings already lost in an update to 1.4.1 have to be
+  entered again in the Claude Voice group.
+
+## 1.4.1
+
+- The Claude Voice settings are now one collapsed group with a
+  **Use Claude Voice** switch, off by default. Settings entered in 1.4.0
+  keep working; switch it on once.
+- Readable names for the usage sensor and sign-in notification options.
+
+## 1.4.0
+
+- Optional connection to a Claude Voice dashboard: set
+  `claude_voice_server`, `claude_voice_token` and `claude_voice_name`, and
+  this session shows up there and can be answered from it. The daemon is
+  fetched from the dashboard on each start; with the options empty nothing
+  changes. Adds `nodejs` to the image.
+
+## 1.3.2
+
+- The usage sensors could stop updating entirely on Alpine/BusyBox systems:
+  the credentials-file lock used `flock -w`, a GNU-only flag BusyBox's
+  `flock` doesn't support, so every token refresh attempt failed outright
+  once the token neared expiry. The wait-with-timeout is now reimplemented
+  as a poll over `flock -n`, which both flavors support.
+
+## 1.3.1
+
+Fixes from a review of everything since 1.0.0. None of them were visible on
+a healthy system; all of them would have bitten eventually.
+
+- The usage sensors could stop updating entirely if the API left a reset
+  time out of its answer, and the 7-day percentage could end up holding a
+  timestamp instead of a number.
+- A token refresh that succeeded could still be reported as a failure.
+- The sign-in notification is re-posted periodically, so it is not lost for
+  good if Home Assistant restarts while the prompt is up.
+- The sign-in link can no longer pick up stray characters from the terminal.
+- Skills you installed yourself are left alone even when they are symlinks,
+  and links to skills a previous version shipped are cleaned up.
+- The seconds-until-reset attribute is gone from the usage sensors; it
+  changed every poll, which defeated the write deduplication. The
+  `sensor.claude_5h_resets_at` / `sensor.claude_7d_resets_at` entities carry
+  the same information.
+
+## 1.3.0
+
+- When Claude asks you to sign in again, the sign-in link is posted as a
+  Home Assistant notification, where it is tappable. The Home Assistant app
+  does not let you select text in the terminal, so the link was previously
+  readable but impossible to open from a phone. Turn off with the new
+  `login_notification` option.
+
+## 1.2.0
+
+- Publish Claude's account usage as six Home Assistant sensors: usage in the
+  5-hour, 7-day and extra windows, a timestamp for when each window resets,
+  and a last-updated diagnostic. Put them on a dashboard, or automate on
+  them. Off unless you turn the new `usage_sensors` option on.
+- Sensors are only written when their value changes, so a value that holds
+  still does not fill the recorder with identical states. Reset times are
+  rounded to the minute for the same reason.
+
+## 1.1.0
+
+- Ship the [Home Assistant agent skills][ha-skills], so Claude knows Home
+  Assistant's own conventions - native constructs over templates, helper
+  selection, automation modes, Zigbee button patterns, dashboard
+  configuration, safe refactoring - instead of guessing them. They are
+  updated along with the app, and your own skills are never touched.
+
+[ha-skills]: https://github.com/homeassistant-ai/skills
+
+## 1.0.3
+
+- Create an SSH key on first boot and print the public key in the log, so
+  pushing to Git only takes pasting it into your Git host. Previously you
+  had to ask Claude to generate one.
+
+## 1.0.2
+
+- Keep `~/.ssh` on the persistent volume. OpenSSH reads it from
+  `/etc/passwd`, not from `HOME`, so a key created inside the app was lost
+  on the next rebuild.
+
+## 1.0.1
+
+- Bundle `openssh-client`, so Claude can push to Git over SSH. Generate a
+  key once inside the app (`ssh-keygen`); it lives in the persistent
+  storage and survives restarts, rebuilds and updates.
+
 ## 1.0.0
 
 First release.

@@ -2,8 +2,8 @@ configuration:
   session_name:
     name: Session name
     description: >-
-      Name of the tmux session holding Claude, and the name it registers for
-      Remote Control. Change only if it clashes with something else.
+      Name of the Claude session, and the name it registers for Remote
+      Control. Change only if it clashes with something else.
   permission_mode:
     name: Permission mode
     description: >-
@@ -17,3 +17,41 @@ configuration:
     description: >-
       Let this session be driven from the Claude apps and claude.ai, not
       only from the terminal here.
+  usage_sensors:
+    name: Usage sensors
+    description: >-
+      Publish your Claude account's 5-hour and 7-day usage as sensors in Home
+      Assistant.
+  login_notification:
+    name: Sign-in notification
+    description: >-
+      When Claude asks you to sign in again, also post the sign-in link as a
+      notification, where it can be tapped.
+  claude_voice:
+    name: Claude Voice
+    description: >-
+      Show this session in a Claude Voice dashboard, to read, listen to and
+      answer it from there.
+    fields:
+      enabled:
+        name: Use Claude Voice
+        description: Connect to the dashboard below. Off by default.
+      server:
+        name: Dashboard address
+        description: For example https://voice.example.com
+      token:
+        name: Token
+        description: >-
+          This machine's token from the dashboard (bin/add-agent.mjs there).
+      name:
+        name: Machine name
+        description: The name this machine has on the dashboard; must match the token.
+  claude_voice_server:
+    name: Claude Voice address (1.4.0)
+    description: Old setting, still read. Use the Claude Voice group instead.
+  claude_voice_token:
+    name: Claude Voice token (1.4.0)
+    description: Old setting, still read. Use the Claude Voice group instead.
+  claude_voice_name:
+    name: Claude Voice machine name (1.4.0)
+    description: Old setting, still read. Use the Claude Voice group instead.

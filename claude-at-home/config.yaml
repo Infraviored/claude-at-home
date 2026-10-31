@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/apps/configuration#app-configuration
 name: Claude at Home
-version: "1.0.0"
+version: "1.5.2"
 slug: claude-at-home
 description: Persistent Claude Code session with an ingress-only web terminal in your sidebar
 url: "https://github.com/Infraviored/claude-at-home"
@@ -27,9 +27,30 @@ options:
   session_name: claude-at-home
   permission_mode: auto
   remote_control: true
+  usage_sensors: false
+  login_notification: true
+  claude_voice:
+    enabled: false
+    server: ""
+    token: ""
+    name: homeassistant
 schema:
   session_name: "str?"
   permission_mode: "list(auto|bypass permissions|accept edits|plan|manual|never ask)?"
   remote_control: "bool?"
+  usage_sensors: "bool?"
+  login_notification: "bool?"
+  claude_voice:
+    enabled: bool
+    server: "str?"
+    token: "password?"
+    name: "str?"
+  # 1.4.0's flat options. Kept in the schema (but not in `options`, so they
+  # don't show up for new installs) because Supervisor drops every option the
+  # schema no longer lists on update - without these a 1.4.0 install lost
+  # its server and token on the way to 1.4.1.
+  claude_voice_server: "str?"
+  claude_voice_token: "password?"
+  claude_voice_name: "str?"
 # No `image:` on purpose — Supervisor builds this from the Dockerfile in
 # place. Add `image:` (plus CI publishing) only when shipping prebuilt.

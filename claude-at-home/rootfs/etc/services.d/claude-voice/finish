@@ -1,0 +1,9 @@
+#!/usr/bin/env bashio
+# Same rule as the other services: never take the app down, always come back.
+if [ -f /run/claude-voice-kit.pid ]; then
+    kill -TERM "$(cat /run/claude-voice-kit.pid 2>/dev/null)" 2>/dev/null || true
+    rm -f /run/claude-voice-kit.pid
+fi
+bashio::log.info "Claude Voice connection exited (${1}) — restarting."
+sleep 5
+
