@@ -4,8 +4,13 @@
 # claude service), named after the session_name option.
 #
 #   - running: nothing to do
-#   - known to the daemon but ended (crash, restart, /exit): respawned, same
-#     conversation and flags
+#   - put to sleep by the daemon (idle, or low memory): left asleep. It wakes
+#     when used -- the web terminal or the dashboard respawns it. Respawning
+#     it here at once made a loop on a small machine: low memory, retire,
+#     respawn (another few hundred MB), low memory again, every two minutes,
+#     and Home Assistant itself stalled for seconds each time.
+#   - known to the daemon but ended otherwise (crash, restart, /exit):
+#     respawned, same conversation and flags
 #   - the options changed since it started: stopped, taken out of the daemon
 #     and resumed with the new flags; the conversation stays
 #   - unknown: resumed from the newest conversation of the work folder --
@@ -22,6 +27,9 @@ readonly INTERVAL=15
 readonly PID_FILE=/run/claude-main.pid
 readonly WAKE_FLAG=/run/claude-main.wake
 readonly RESPAWN_WINDOW=120
+readonly DAEMON_LOG=/data/.claude/daemon.log
+asleep_logged=""
+pinned_checked=""
 
 echo "$$" > "${PID_FILE}"
 woken=0
@@ -57,6 +65,42 @@ set_flags() {
     WANT="$(printf '%s\n' "${SESSION}" "${FLAGS[@]}" | jq -Rsc 'split("\n")[:-1]')"
 }
 
+# Whether the daemon's last word on this job is that it retired it (idle,
+# low memory): asleep, not crashed. Its log says so; `claude agents` shows
+# both as "done". Only the log's tail is read.
+retired_by_daemon() {  # short
+    local last
+    [ -f "${DAEMON_LOG}" ] || return 1
+    last="$(tail -c 262144 "${DAEMON_LOG}" 2>/dev/null \
+        | grep -oE "bg (retire|spawned|respawned|settled|claimed-spare) $1\b" | tail -1)"
+    [[ "${last}" == "bg retire $1" ]] && return 0
+    # "settled" follows a retire; the retire before it decides.
+    [[ "${last}" == "bg settled $1" ]] || return 1
+    last="$(tail -c 262144 "${DAEMON_LOG}" 2>/dev/null \
+        | grep -oE "bg (retire|spawned|respawned|claimed-spare) $1\b" | tail -1)"
+    [[ "${last}" == "bg retire $1" ]]
+}
+
+# Pinned, the dashboard (Claude Voice) keeps listing the session while it is
+# asleep and wakes it with the next message. Only this one job is pinned.
+pin_main() {  # short
+    local f=/data/.claude/jobs/pins.json tmp
+    mkdir -p /data/.claude/jobs
+    tmp="$(mktemp "${f}.XXXXXX")"
+    if [ -s "${f}" ]; then
+        jq -c --arg s "$1" --arg old "${2:-}" \
+            '(if type == "array" then . else [] end) | map(select(. != $old and . != $s)) + [$s]' \
+            "${f}" > "${tmp}"
+    else
+        jq -nc --arg s "$1" '[$s]' > "${tmp}"
+    fi
+    if [ -s "${tmp}" ]; then
+        mv "${tmp}" "${f}"
+    else
+        rm -f "${tmp}"
+    fi
+}
+
 # A background session does not ask whether to trust its folder, it refuses
 # one never trusted. In a terminal this was a question answered once; here
 # the folder is the one this app exists to work in. Recorded the way Claude
@@ -89,7 +133,8 @@ latest_session() {
 
 # Starts the main session as a new job: continuing $1 if given.
 start_main() {
-    local resume="$1" out short sid="" i
+    local resume="$1" out short sid="" i previous
+    previous="$(main_short || true)"
     local args=(--bg --name "${SESSION}" "${FLAGS[@]}")
     [ -n "${resume}" ] && args+=(--resume "${resume}")
     trust_workdir
@@ -120,6 +165,7 @@ start_main() {
     jq -n --arg short "${short}" --arg sid "${sid:-${resume}}" --argjson flags "${WANT}" \
         '{short: $short, sessionId: $sid, flags: $flags}' > "${MAIN_STATE}.tmp" \
         && mv "${MAIN_STATE}.tmp" "${MAIN_STATE}"
+    pin_main "${short}" "${previous}"
     bashio::log.info "Session '${SESSION}' runs as ${short}."
 }
 
@@ -146,13 +192,27 @@ ensure_main() {
     job=""
     [ -n "${short}" ] && job="$(jq -c --arg s "${short}" 'map(select(.id == $s)) | .[0] // empty' <<<"${all}")"
     if [ -n "${job}" ]; then
+        # A session from before this version: pinned once here.
+        if [ "${pinned_checked}" != "${short}" ]; then
+            jq -e --arg s "${short}" 'index($s) != null' /data/.claude/jobs/pins.json >/dev/null 2>&1 \
+                || pin_main "${short}"
+            pinned_checked="${short}"
+        fi
         had="$(jq -c '.flags // []' "${MAIN_STATE}")"
         if [ "${had}" = "${WANT}" ]; then
-            if claude agents --json 2>/dev/null \
-                | jq -e --arg s "${short}" 'any(.[]; .id == $s and .pid != null)' >/dev/null; then
+            if jq -e '.pid != null' <<<"${job}" >/dev/null; then
                 respawn_count=0
+                asleep_logged=""
                 return 0
             fi
+            if retired_by_daemon "${short}"; then
+                if [ "${asleep_logged}" != "${short}" ]; then
+                    bashio::log.info "Session '${SESSION}' (${short}) was put to sleep by the Claude daemon; it wakes when you open the terminal or write to it."
+                    asleep_logged="${short}"
+                fi
+                return 0
+            fi
+            asleep_logged=""
 
             now="$(date +%s)"
             if [ "${last_respawn_short}" = "${short}" ] && [ $(( now - last_respawn_time )) -le "${RESPAWN_WINDOW}" ]; then

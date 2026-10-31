@@ -12,7 +12,7 @@ set -u
 # shellcheck source=/dev/null
 source /usr/lib/claude-at-home/common.sh
 
-readonly INTERVAL=10
+readonly INTERVAL=30
 # Written when a sign-in succeeds.
 readonly CREDENTIALS=/data/.claude/.credentials.json
 readonly NOTIFICATION_ID=claude_at_home_login
