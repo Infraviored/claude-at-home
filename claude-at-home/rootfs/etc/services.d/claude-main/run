@@ -133,8 +133,10 @@ latest_session() {
 
 # Starts the main session as a new job: continuing $1 if given.
 start_main() {
-    local resume="$1" out short sid="" i previous
-    previous="$(main_short || true)"
+    # $2: the job this one replaces, unpinned; callers that already removed
+    # the state file pass it, the file no longer says it.
+    local resume="$1" out short sid="" i previous="${2:-}"
+    [ -n "${previous}" ] || previous="$(main_short || true)"
     local args=(--bg --name "${SESSION}" "${FLAGS[@]}")
     [ -n "${resume}" ] && args+=(--resume "${resume}")
     trust_workdir
@@ -213,6 +215,14 @@ ensure_main() {
                 return 0
             fi
             asleep_logged=""
+            # The list above may predate a wake from the web terminal; a
+            # respawn of a job that runs again fails, and that failure would
+            # remove it. Asked once more before acting.
+            if claude agents --json 2>/dev/null \
+                | jq -e --arg s "${short}" 'any(.[]; .id == $s and .pid != null)' >/dev/null; then
+                respawn_count=0
+                return 0
+            fi
 
             now="$(date +%s)"
             if [ "${last_respawn_short}" = "${short}" ] && [ $(( now - last_respawn_time )) -le "${RESPAWN_WINDOW}" ]; then
@@ -229,12 +239,14 @@ ensure_main() {
                 rm -f "${MAIN_STATE}"
                 respawn_count=0
                 last_respawn_short=""
-                start_main ""
+                start_main "" "${short}"
                 return
             fi
 
             bashio::log.info "Session '${SESSION}' (${short}) is not running — respawning it (attempt ${respawn_count}/3)."
-            if ! claude respawn "${short}" >/dev/null 2>&1; then
+            if ! claude respawn "${short}" >/dev/null 2>&1 \
+                && ! claude agents --json 2>/dev/null \
+                    | jq -e --arg s "${short}" 'any(.[]; .id == $s and .pid != null)' >/dev/null; then
                 bashio::log.warning "claude respawn ${short} failed — removing dead job and restarting."
                 claude rm "${short}" >/dev/null 2>&1 || true
                 sid="$(jq -r '.sessionId // empty' <<<"${job}")"
@@ -242,7 +254,7 @@ ensure_main() {
                 respawn_count=0
                 last_respawn_short=""
                 [ -n "${sid}" ] || sid="$(latest_session)"
-                start_main "${sid}"
+                start_main "${sid}" "${short}"
                 return
             fi
             return 0
@@ -253,7 +265,7 @@ ensure_main() {
         claude rm "${short}" >/dev/null 2>&1 || true
         respawn_count=0
         last_respawn_short=""
-        start_main "${sid}"
+        start_main "${sid}" "${short}"
         return
     fi
     # Not in the daemon: the first start after the update from tmux, or a

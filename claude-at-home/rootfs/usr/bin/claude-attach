@@ -59,8 +59,8 @@ while true; do
         # low, and claude-main leaves it so): opening the terminal wakes it.
         if [ -n "${short}" ] && [ "${woke}" != "${short}" ]; then
             printf 'Waking the Claude session...\r\n'
-            claude respawn "${short}" >/dev/null 2>&1 || true
-            woke="${short}"
+            # Tried again on the next round if the daemon refused this one.
+            claude respawn "${short}" >/dev/null 2>&1 && woke="${short}"
             waited=1
         fi
         [ "${waited}" = 0 ] && printf 'Waiting for the Claude session to start...\r\n'

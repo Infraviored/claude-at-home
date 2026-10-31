@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.3
+
+- Opening the web terminal right while the supervision checks can no longer
+  remove the session it is waking; a refused wake is retried.
+- A main session replaced after failed restarts is no longer left pinned on
+  the dashboard.
+
 ## 1.5.2
 
 - A session the Claude daemon puts to sleep (idle, or low memory) now stays
