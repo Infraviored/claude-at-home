@@ -26,6 +26,19 @@ if [ -e "${BYPASS_PENDING}" ] && ! bypass_accepted; then
         "Press Enter to continue."
     read -r _ || exit 0
     (cd "$(workdir)" && claude --dangerously-skip-permissions)
+    # After the disclaimer is accepted, trigger claude-main's restart immediately
+    # and wait until the session is running with the new flags before attaching.
+    if bypass_accepted; then
+        pkill -f "sleep 15" 2>/dev/null || true
+        for _ in $(seq 1 30); do
+            if [ ! -e "${BYPASS_PENDING}" ] \
+                && jq -e '.flags // [] | contains(["--dangerously-skip-permissions"])' "${MAIN_STATE}" >/dev/null 2>&1 \
+                && running "$(main_short || true)"; then
+                break
+            fi
+            sleep 1
+        done
+    fi
 fi
 
 waited=0

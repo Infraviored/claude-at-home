@@ -43,13 +43,27 @@ call() {  # service, payload
 # character or the next line's first word, and the sanity check below cannot
 # see the difference because it only tests for substrings.
 current_url() {
-    local short
+    local short raw
     short="$(main_short)"
     [ -n "${short}" ] || return 0
-    claude logs "${short}" 2>/dev/null \
-        | sed $'s/\x1b\\[[0-9;?]*[A-Za-z]//g; s/\x1b[()][A-Za-z0-9]//g' \
-        | tr -d '\r\n' \
-        | grep -oE 'https://claude\.com/[a-z/]*oauth/authorize\?[A-Za-z0-9._~%&=+-]*' \
+    raw="$(claude logs "${short}" 2>/dev/null \
+        | sed $'s/\x1b\\[[0-9;?]*[A-Za-z]//g; s/\x1b[()][A-Za-z0-9]//g')" || return 0
+    printf '%s\n' "${raw}" \
+        | awk '
+            /https:\/\/(claude\.com|claude\.ai)\/[a-z\/]*oauth\/authorize\?/ {
+                url = $0
+                sub(/^.*https:\/\//, "https://", url)
+                while ((getline line) > 0) {
+                    if (line ~ /^[A-Za-z0-9._~%&=+-]+$/) {
+                        url = url line
+                    } else {
+                        break
+                    }
+                }
+                print url
+            }
+        ' \
+        | grep -oE 'https://(claude\.com|claude\.ai)/[a-z/]*oauth/authorize\?[A-Za-z0-9._~%&=+-]*' \
         | tail -1
 }
 
@@ -65,10 +79,20 @@ notified_at=0
 done_url=""
 cycle=0
 
+# On startup, if credentials exist and are valid, treat any current URL in
+# the logs as already done so it is never posted.
+if [ -s "${CREDENTIALS}" ]; then
+    done_url="$(current_url || true)"
+fi
+
 while true; do
     url="$(current_url || true)"
     if [ -n "${notified}" ] && signed_in_since "${notified_at}"; then
         done_url="${notified}"
+    fi
+    # If signed in and no notification is pending, any log URL is from a prior sign-in
+    if [ -s "${CREDENTIALS}" ] && [ -z "${notified}" ]; then
+        done_url="${url}"
     fi
     [ -n "${url}" ] && [ "${url}" = "${done_url}" ] && url=""
     repost=false
@@ -93,7 +117,7 @@ while true; do
                 bashio::log.warning "Could not post the sign-in notification."
             fi
         fi
-    elif [ -n "${notified}" ]; then
+    elif [ -z "${url}" ] && [ -n "${notified}" ]; then
         # Prompt is gone - either signed in or cancelled. Either way the
         # link is dead, so the notification should not linger.
         call dismiss "$(jq -nc --arg id "${NOTIFICATION_ID}" '{notification_id: $id}')" >/dev/null

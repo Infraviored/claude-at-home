@@ -15,8 +15,8 @@ readonly SEED_HOME=/opt/claude-home
 # First run: seed the CLI baked into the image into /data. No download.
 if [ ! -x /data/.local/bin/claude ]; then
     bashio::log.info "Seeding Claude Code CLI into /data..."
-    mkdir -p /data
-    cp -a "${SEED_HOME}/.local" /data/.local
+    mkdir -p /data/.local
+    cp -a "${SEED_HOME}/.local/." /data/.local/
 fi
 
 # Up to 1.4 the session lived in tmux on this socket. That tmux server died

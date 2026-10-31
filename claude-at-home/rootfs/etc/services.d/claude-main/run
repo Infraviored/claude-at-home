@@ -93,6 +93,11 @@ start_main() {
         | grep -oE '[0-9a-f]{8}$' | head -1)" || true
     if [ -z "${short}" ]; then
         bashio::log.warning "Could not start the session: $(printf '%s' "${out}" | tail -3)"
+        if [ -n "${resume}" ]; then
+            bashio::log.warning "Resuming conversation ${resume:0:8} failed — falling back to a fresh session."
+            start_main ""
+            return $?
+        fi
         return 1
     fi
     # The daemon chooses the id of a new conversation; read back once listed.
@@ -113,8 +118,14 @@ ensure_main() {
     set_flags
     # Not knowing what the daemon has is not "it has nothing": starting then
     # would make a second session on the same conversation.
-    all="$(claude agents --json --all 2>/dev/null)" || return 1
-    jq -e 'type == "array"' <<<"${all}" >/dev/null 2>&1 || return 1
+    all="$(claude agents --json --all 2>/dev/null)" || {
+        bashio::log.warning "Could not ask the Claude daemon for its sessions."
+        return 1
+    }
+    jq -e 'type == "array"' <<<"${all}" >/dev/null 2>&1 || {
+        bashio::log.warning "Claude daemon returned an invalid session list."
+        return 1
+    }
     short="$(main_short)"
     job=""
     [ -n "${short}" ] && job="$(jq -c --arg s "${short}" 'map(select(.id == $s)) | .[0] // empty' <<<"${all}")"
@@ -125,8 +136,15 @@ ensure_main() {
                 | jq -e --arg s "${short}" 'any(.[]; .id == $s and .pid != null)' >/dev/null \
                 && return 0
             bashio::log.info "Session '${SESSION}' (${short}) is not running — respawning it."
-            claude respawn "${short}" >/dev/null 2>&1 \
-                || bashio::log.warning "claude respawn ${short} failed."
+            if ! claude respawn "${short}" >/dev/null 2>&1; then
+                bashio::log.warning "claude respawn ${short} failed — removing dead job and restarting."
+                claude rm "${short}" >/dev/null 2>&1 || true
+                sid="$(jq -r '.sessionId // empty' <<<"${job}")"
+                rm -f "${MAIN_STATE}"
+                [ -n "${sid}" ] || sid="$(latest_session)"
+                start_main "${sid}"
+                return
+            fi
             return 0
         fi
         bashio::log.info "Options changed — restarting '${SESSION}' with the new ones."
@@ -151,6 +169,6 @@ for _ in $(seq 1 30); do
 done
 
 while true; do
-    ensure_main || bashio::log.warning "Could not ask the Claude daemon for its sessions."
+    ensure_main || true
     sleep "${INTERVAL}"
 done

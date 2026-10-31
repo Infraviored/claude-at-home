@@ -273,12 +273,12 @@ that session over ingress and waits for it while it is not up yet. Because
 all are supervised independently, each can crash and recover without the
 others noticing.
 
-Another service watches the session for a sign-in prompt. It reads the
+A fourth service watches the session for a sign-in prompt. It reads the
 session's recent output with `claude logs`, glues the hard-wrapped URL back
 together and posts it through the same Core API proxy; it dismisses the
 notification once the sign-in has written new credentials.
 
-Usage numbers are fetched by a third supervised service. It reads the OAuth
+Usage numbers are fetched by a fifth supervised service. It reads the OAuth
 token from the app's own storage — Home Assistant Core runs in a separate
 container and cannot see that file, which is why this cannot be a native
 Home Assistant sensor — and pushes only the derived percentages through the
