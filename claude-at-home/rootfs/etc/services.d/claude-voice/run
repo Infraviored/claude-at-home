@@ -67,22 +67,28 @@ else
     bashio::log.warning "Could not refresh the Claude Voice daemon; using the copy from last time."
 fi
 
+# Same home as the Claude session (common.sh), so the dashboard's daemon sees
+# its history (/data/.claude) and reaches the Claude daemon that runs it.
+# shellcheck source=/dev/null
+source /usr/lib/claude-at-home/common.sh
+
 readonly ETAG_FILE=/data/claude-voice-kit.etag
 readonly KIT_PID_FILE=/run/claude-voice-kit.pid
 
 fetch_kit() {
-    local headers_tmp kit_tmp http_code etag_arg=()
+    local headers_tmp kit_tmp err_tmp http_code etag_arg=()
     headers_tmp="$(mktemp /tmp/kit-headers.XXXXXX)"
     kit_tmp="$(mktemp /tmp/kit-archive.XXXXXX)"
+    err_tmp="$(mktemp /tmp/kit-curl-err.XXXXXX)"
 
-    if [ -f "${ETAG_FILE}" ]; then
+    if [ -s "${ETAG_FILE}" ]; then
         etag_arg=(-H "If-None-Match: $(cat "${ETAG_FILE}")")
     fi
 
     http_code="$(curl -sS -m 60 -D "${headers_tmp}" \
         -H "Authorization: Bearer ${TOKEN}" \
         ${etag_arg[@]+"${etag_arg[@]}"} \
-        "${SERVER}/api/agent/kit?name=${NAME}" -o "${kit_tmp}" -w "%{http_code}" 2>/tmp/kit-curl.err)" || http_code="000"
+        "${SERVER}/api/agent/kit?name=${NAME}" -o "${kit_tmp}" -w "%{http_code}" 2>"${err_tmp}")" || http_code="000"
 
     case "${http_code}" in
         200)
@@ -90,10 +96,14 @@ fetch_kit() {
             new_etag="$(grep -i '^etag:' "${headers_tmp}" | head -1 | tr -d '\r\n' | sed -E 's/^[eE][tT][aA][gG]:[[:space:]]*//')"
             unpack_dir="$(mktemp -d /tmp/kit-unpack.XXXXXX)"
             if tar -xzf "${kit_tmp}" -C "${unpack_dir}" 2>/dev/null; then
-                if [ -f "${unpack_dir}/install.sh" ]; then
+                if [ -f "${unpack_dir}/install.sh" ] && [ ! -L "${unpack_dir}/install.sh" ]; then
                     chmod +x "${unpack_dir}/install.sh"
-                    if HOME=/data "${unpack_dir}/install.sh"; then
-                        [ -n "${new_etag}" ] && printf '%s' "${new_etag}" > "${ETAG_FILE}"
+                    if (cd "${unpack_dir}" && HOME=/data timeout 120 ./install.sh); then
+                        if [ -n "${new_etag}" ]; then
+                            printf '%s' "${new_etag}" > "${ETAG_FILE}"
+                        else
+                            rm -f "${ETAG_FILE}"
+                        fi
                         bashio::log.info "Installed tools kit from ${SERVER}."
                     else
                         bashio::log.warning "Kit install.sh failed."
@@ -114,7 +124,7 @@ fetch_kit() {
             ;;
         *)
             local err_msg
-            err_msg="$(head -c 200 /tmp/kit-curl.err 2>/dev/null)"
+            err_msg="$(head -c 200 "${err_tmp}" 2>/dev/null)"
             if [ -n "${err_msg}" ]; then
                 bashio::log.warning "Could not fetch kit from ${SERVER} (HTTP ${http_code}): ${err_msg}"
             else
@@ -122,7 +132,7 @@ fetch_kit() {
             fi
             ;;
     esac
-    rm -f "${headers_tmp}" "${kit_tmp}" /tmp/kit-curl.err
+    rm -f "${headers_tmp}" "${kit_tmp}" "${err_tmp}"
 }
 
 # Fetch kit on start: failures log a warning and never stop the daemon
@@ -134,17 +144,13 @@ if [ -f "${KIT_PID_FILE}" ]; then
     rm -f "${KIT_PID_FILE}"
 fi
 (
-    echo "$$" > "${KIT_PID_FILE}"
     while true; do
         sleep 3600
         fetch_kit || true
     done
 ) &
+echo "$!" > "${KIT_PID_FILE}"
 
-# Same home as the Claude session (common.sh), so the dashboard's daemon sees
-# its history (/data/.claude) and reaches the Claude daemon that runs it.
-# shellcheck source=/dev/null
-source /usr/lib/claude-at-home/common.sh
 export CLAUDE_VOICE_SERVER="${SERVER}"
 export CLAUDE_VOICE_TOKEN="${TOKEN}"
 export CLAUDE_VOICE_NAME="${NAME}"
