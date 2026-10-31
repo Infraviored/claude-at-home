@@ -151,6 +151,10 @@ downloaded from the dashboard on every start, with the token, into
 `/data/claude-voice-agent.mjs`. It only connects outwards; this app still
 publishes no ports.
 
+The dashboard can hand this session a set of tools; it is fetched with the same
+token on start and refreshed hourly. If no kit is configured on the dashboard,
+nothing is fetched.
+
 From the dashboard you can also start more sessions here — for example a
 cheap Haiku session for a quick job — and stop them again. They run in the
 Home Assistant configuration folder with the permission mode set above,

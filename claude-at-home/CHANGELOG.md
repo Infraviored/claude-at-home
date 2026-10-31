@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1
+
+- When Claude Voice is enabled, the session can now receive a tool kit from
+  the dashboard. It is fetched on start using the machine token and refreshed
+  hourly; without a kit on the dashboard nothing changes.
+
 ## 1.5.0
 
 - Claude now runs as a Claude Code background session (`claude --bg`),
