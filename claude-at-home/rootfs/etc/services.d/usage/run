@@ -91,6 +91,14 @@ cycle=0
 while true; do
     force_push=false
     [ $(( cycle % REPUSH_EVERY )) -eq 0 ] && force_push=true
+    # Home Assistant restarted since the last cycle: the heartbeat entity is
+    # gone, and so is every value skipped as unchanged. Re-push them all now
+    # instead of waiting up to an hour for the scheduled re-push.
+    if [ "${force_push}" = false ] && [ "$(curl -sS -m 10 -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        "${API}/sensor.claude_usage_last_updated" 2>/dev/null)" = "404" ]; then
+        force_push=true
+    fi
     cycle=$(( cycle + 1 ))
     if [ ! -r "${CLAUDE_CREDENTIALS}" ]; then
         # Expected until you have logged in once - not an error.
