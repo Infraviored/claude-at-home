@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4
+
+- After a Home Assistant restart the usage sensors come back on the next poll
+  (at most five minutes). Before, values that had not changed stayed missing
+  until the hourly re-push.
+
 ## 1.5.3
 
 - Opening the web terminal right while the supervision checks can no longer
